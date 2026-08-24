@@ -1,0 +1,12 @@
+{
+  "name": "排座位系統",
+  "short_name": "排座位",
+  "description": "多元教室座位安排工具 — 資料只存本機",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
