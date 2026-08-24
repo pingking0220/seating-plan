@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/layout/:id', name: 'layout-editor', component: () => import('@/views/LayoutEditorView.vue') },
     { path: '/plans', name: 'plans', component: () => import('@/views/PlansView.vue') },
     { path: '/plan/:id', name: 'seating', component: () => import('@/views/SeatingView.vue') },
+    { path: '/help', name: 'help', component: () => import('@/views/HelpView.vue') },
   ],
 })
 

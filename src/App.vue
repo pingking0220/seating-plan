@@ -46,6 +46,7 @@ const needBackup = computed(() => {
         <RouterLink to="/">班級</RouterLink>
         <RouterLink to="/layouts">教室佈局</RouterLink>
         <RouterLink to="/plans">座位表</RouterLink>
+        <RouterLink to="/help">使用說明</RouterLink>
       </nav>
       <span class="privacy dim">所有資料只存在這台電腦的瀏覽器，不會上傳任何伺服器</span>
       <label class="restore-btn" title="從 .json 備份檔還原">
