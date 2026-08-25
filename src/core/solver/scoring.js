@@ -150,7 +150,7 @@ export function totalScore(ctx, cfg) {
   for (const e of fillFrontEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
-  for (const e of colBalanceEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of colBalanceEval(ctx, !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of everyColEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   return s
 }
@@ -172,7 +172,7 @@ export function fullViolations(ctx, cfg) {
   for (const e of fillFrontEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
-  for (const e of colBalanceEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
+  for (const e of colBalanceEval(ctx, !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of everyColEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   return out
 }
@@ -294,10 +294,49 @@ export function seatnoOrderEval(ctx, direction = 'lr', genderAware = false) {
   return out
 }
 
-/** 每排人數差異不超過兩人：各直行人數 max-min > 2 就記懲罰 */
-export function colBalanceEval(ctx) {
+/** 每排人數差異不超過兩人。
+ *  genderAware=true（與「男女不同排」併用）：男生、女生各自在自己坐的那些直行內
+ *  均分（差 > 1 記懲罰），避免「女生排 5 人、男生排 2 人」的失衡。 */
+export function colBalanceEval(ctx, genderAware = false) {
   const cols = columnsInOrder(ctx)
   if (cols.length < 2 || ctx.assign.size === 0) return []
+
+  // genderAware 需要實際有男也有女，否則退回全域判定
+  let hasM = false
+  let hasF = false
+  if (genderAware) {
+    for (const stuId of ctx.assign.values()) {
+      const g = ctx.studentById.get(stuId)?.gender
+      if (g === 'M') hasM = true
+      else if (g === 'F') hasF = true
+      if (hasM && hasF) break
+    }
+  }
+  if (genderAware && hasM && hasF) {
+    const out = []
+    for (const [gender, label] of [['M', '男生'], ['F', '女生']]) {
+      const counts = []
+      for (const [, seats] of cols) {
+        const n = seats.filter((s) => {
+          const stuId = ctx.assign.get(s.id)
+          return stuId && ctx.studentById.get(stuId)?.gender === gender
+        }).length
+        if (n > 0) counts.push(n)
+      }
+      if (counts.length < 2) continue
+      const max = Math.max(...counts)
+      const min = Math.min(...counts)
+      if (max - min > 1) {
+        out.push({
+          ruleId: 'col_balance',
+          penalty: max - min - 1,
+          message: `${label}各排人數不均（最多 ${max} 人、最少 ${min} 人）`,
+        })
+      }
+    }
+    return out
+  }
+
   const counts = cols.map(([, seats]) => seats.filter((s) => ctx.assign.get(s.id)).length)
   const max = Math.max(...counts)
   const min = Math.min(...counts)

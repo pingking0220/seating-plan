@@ -17,7 +17,7 @@ export const RULES = [
   { id: 'fill_front', label: '往前坐不留空', desc: '以教室前方為基準，每一直行由前往後坐滿，空位留在行尾', weight: 4, group: '座位配置' },
   { id: 'seatno_order_lr', label: '座號順序（由左至右）', desc: '1 號從最左直行最前面開始，一行坐滿換右邊一行；與「男女不同排」併用時男女各自依座號排、左右交錯', weight: 8, group: '座位配置', defaultEnabled: false },
   { id: 'seatno_order_rl', label: '座號順序（由右至左）', desc: '1 號從最右直行最前面開始，一行坐滿換左邊一行（兩個方向只開一個）', weight: 8, group: '座位配置', defaultEnabled: false },
-  { id: 'col_balance', label: '每排人數平均', desc: '各直行人數差異不超過兩人', weight: 3, group: '座位配置' },
+  { id: 'col_balance', label: '每排人數平均', desc: '各直行人數差異不超過兩人；與「男女不同排」併用時，男生各排、女生各排分別均分（差不超過 1 人）', weight: 3, group: '座位配置' },
   { id: 'every_col', label: '每排皆要有人', desc: '人數足夠時，每一直行至少安排一位學生', weight: 3, group: '座位配置' },
   { id: 'height_order', label: '身高由前而後', desc: '同一直行後面的人比前面高（需身高資料）', weight: 2, group: '生理' },
   { id: 'avoid_same_seat', label: '避免同座位', desc: '不坐上次紀錄的同一個座位（需先封存歷史）', weight: 4, group: '公平輪替' },

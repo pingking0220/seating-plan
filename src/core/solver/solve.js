@@ -44,10 +44,16 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
     infeasible.push(`無障礙座位不足：${wheelchairCount} 位輪椅生 > ${ctx.accessibleSeats.size} 個無障礙座`)
   }
 
-  // 座號順序規則開啟時：直接按座號序列建立初始解
-  // （逐一貪婪 + 交換搜尋難以收斂到全域排序；序列初始解再讓局部搜尋處理其他規則）
+  // 結構化初始解：
+  // - 座號順序開啟：按座號序列填（逐一貪婪 + 交換難以收斂到全域排序）
+  // - 男女不同排開啟：按性別分行、各行均分填（單步交換會被 fill_front 卡在
+  //   「移走排頭會開洞」的死鎖，初始就把結構排好）
   const orderDir = cfg.seatno_order_lr?.enabled ? 'lr' : cfg.seatno_order_rl?.enabled ? 'rl' : null
-  if (orderDir) {
+  const wantGenderInit =
+    cfg.gender_alt_columns?.enabled &&
+    pool.some((s) => s.gender === 'M') &&
+    pool.some((s) => s.gender === 'F')
+  if (orderDir || wantGenderInit) {
     const byCol = new Map()
     for (const s of ctx.seats) {
       if (lockedSeatIds.has(s.id) || ctx.assign.get(s.id)) continue
@@ -61,7 +67,17 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
         seats: seats.sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0)),
       }))
     if (orderDir === 'rl') cols.reverse()
-    const sorted = pool.slice().sort((a, b) => (a.seatNo ?? 999) - (b.seatNo ?? 999))
+    // 座號順序開啟時按座號排；否則（純男女交錯）用 seed 洗牌，「換一個方案」才有變化
+    const sorted = orderDir
+      ? pool.slice().sort((a, b) => (a.seatNo ?? 999) - (b.seatNo ?? 999))
+      : (() => {
+          const arr = pool.slice()
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(rng() * (i + 1))
+            ;[arr[i], arr[j]] = [arr[j], arr[i]]
+          }
+          return arr
+        })()
     const capacity = cols.reduce((x, c) => x + c.seats.length, 0)
     const n = Math.min(sorted.length, capacity)
     // 每行目標人數：開「每排人數平均」就均分，否則一行坐滿換下一行
@@ -94,13 +110,45 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
         : phase === 'F' ? [females, males]
         : males.length >= females.length ? [males, females] : [females, males]
       ;(queues[0].length <= queues[1].length ? queues[0] : queues[1]).push(...others)
-      for (let i = 0; i < cols.length; i++) {
-        const primary = queues[cols[i].leftIdx % 2]
-        const backup = queues[(cols[i].leftIdx + 1) % 2]
-        for (let j = 0; j < targets[i]; j++) {
-          const stu = primary.shift() || backup.shift()
-          if (!stu) break
-          setAssign(ctx, cols[i].seats[j].id, stu.id)
+      // 男女各自在自己那組直行內分配（開「每排人數平均」則均分，否則一行坐滿換下一行）
+      const allocate = (total, caps) => {
+        const t = caps.slice()
+        if (cfg.col_balance?.enabled && caps.length) {
+          const base = Math.floor(total / caps.length)
+          let extra = total % caps.length
+          for (let i = 0; i < caps.length; i++) {
+            t[i] = Math.min(base + (extra > 0 ? 1 : 0), caps[i])
+            if (extra > 0) extra--
+          }
+          let sum = t.reduce((x, y) => x + y, 0)
+          const want = Math.min(total, caps.reduce((x, y) => x + y, 0))
+          while (sum < want) {
+            let grew = false
+            for (let i = 0; i < caps.length && sum < want; i++) {
+              if (t[i] < caps[i]) { t[i]++; sum++; grew = true }
+            }
+            if (!grew) break
+          }
+        }
+        return t
+      }
+      for (const parity of [0, 1]) {
+        const gcols = cols.filter((c) => c.leftIdx % 2 === parity)
+        const queue = queues[parity]
+        const t = allocate(queue.length, gcols.map((c) => c.seats.length))
+        for (let i = 0; i < gcols.length; i++) {
+          for (let j = 0; j < t[i]; j++) {
+            const stu = queue.shift()
+            if (!stu) break
+            setAssign(ctx, gcols[i].seats[j].id, stu.id)
+          }
+        }
+      }
+      // 該性別的直行容量不足時，剩餘的人填進任何還空著的座位
+      const leftover = [...queues[0], ...queues[1]]
+      for (const c of cols) {
+        for (const seat of c.seats) {
+          if (leftover.length && !ctx.assign.get(seat.id)) setAssign(ctx, seat.id, leftover.shift().id)
         }
       }
     } else {
@@ -200,7 +248,7 @@ function swapDelta(ctx, cfg, s1, s2, a, b) {
     for (const e of fillFrontEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     if (cfg.seatno_order_lr?.enabled) for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * cfg.seatno_order_lr.weight
     if (cfg.seatno_order_rl?.enabled) for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * cfg.seatno_order_rl.weight
-    for (const e of colBalanceEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
+    for (const e of colBalanceEval(ctx, !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of everyColEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     return sc
   }
