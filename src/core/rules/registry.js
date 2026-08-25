@@ -15,7 +15,7 @@ export const RULES = [
   { id: 'group_gender_balance', label: '分組性別平衡', desc: '每組男女人數差不超過 1', weight: 3, group: '分組品質' },
   { id: 'gender_alt_columns', label: '男女不同排', desc: '每一直行同性別，左右交錯排列（男女男女…）', weight: 5, group: '分組品質' },
   { id: 'fill_front', label: '往前坐不留空', desc: '以教室前方為基準，每一直行由前往後坐滿，空位留在行尾', weight: 4, group: '座位配置' },
-  { id: 'seatno_order_lr', label: '座號順序（由左至右）', desc: '1 號從最左直行最前面開始，一行坐滿換右邊一行（與輪替、男女交錯等規則衝突時請擇一）', weight: 8, group: '座位配置', defaultEnabled: false },
+  { id: 'seatno_order_lr', label: '座號順序（由左至右）', desc: '1 號從最左直行最前面開始，一行坐滿換右邊一行；與「男女不同排」併用時男女各自依座號排、左右交錯', weight: 8, group: '座位配置', defaultEnabled: false },
   { id: 'seatno_order_rl', label: '座號順序（由右至左）', desc: '1 號從最右直行最前面開始，一行坐滿換左邊一行（兩個方向只開一個）', weight: 8, group: '座位配置', defaultEnabled: false },
   { id: 'col_balance', label: '每排人數平均', desc: '各直行人數差異不超過兩人', weight: 3, group: '座位配置' },
   { id: 'every_col', label: '每排皆要有人', desc: '人數足夠時，每一直行至少安排一位學生', weight: 3, group: '座位配置' },

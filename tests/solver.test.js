@@ -365,3 +365,50 @@ describe('座號順序 / 每排人數平均 / 每排皆要有人', () => {
     expect(violations.filter((x) => x.ruleId === 'every_col')).toHaveLength(0)
   })
 })
+
+describe('座號順序 + 男女不同排 併用', () => {
+  // 4 直行 × 4 列，6 男（1-6 號）+ 6 女（21-26 號）→ 男女排交錯、各自座號遞增
+  const layoutG = () => createLayout({
+    grid: { cols: 6, rows: 6 },
+    seats: Array.from({ length: 16 }, (_, i) =>
+      createSeat({ id: 'y' + i, col: 1 + (i % 4), row: 1 + Math.floor(i / 4) })),
+    furniture: [],
+  })
+  const mixed = () => [
+    ...Array.from({ length: 6 }, (_, i) => stu('m' + (i + 1), { seatNo: i + 1, gender: 'M' })),
+    ...Array.from({ length: 6 }, (_, i) => stu('f' + (i + 1), { seatNo: 20 + i + 1, gender: 'F' })),
+  ]
+
+  it('男生排與女生排交錯，且各自座號由左至右遞增', () => {
+    const cfg = defaultRulesConfig()
+    cfg.seatno_order_lr.enabled = true
+    const r = solve({ layout: layoutG(), students: mixed(), rulesConfig: cfg, seed: 6 })
+    expect(r.violations.filter((v) => v.ruleId === 'seatno_order_lr')).toHaveLength(0)
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+
+    const layout = layoutG()
+    const seatById = new Map(layout.seats.map((s) => [s.id, s]))
+    const students = mixed()
+    const stuById = new Map(students.map((s) => [s.id, s]))
+    const colOf = {}
+    for (const a of r.assignments) {
+      const seat = seatById.get(a.seatId)
+      const st = stuById.get(a.studentId)
+      ;(colOf[seat.col] = colOf[seat.col] || []).push({ row: seat.row, no: st.seatNo, g: st.gender })
+    }
+    const cols = Object.keys(colOf).map(Number).sort((a, b) => a - b)
+    // 每直行單一性別、左右交錯
+    const genders = cols.map((c) => new Set(colOf[c].map((x) => x.g)))
+    for (const g of genders) expect(g.size).toBe(1)
+    for (let i = 1; i < genders.length; i++) expect([...genders[i]][0]).not.toBe([...genders[i - 1]][0])
+    // 各性別的座號沿（直行由左至右、行內由前到後）遞增
+    for (const gender of ['M', 'F']) {
+      const seq = []
+      for (const c of cols) {
+        colOf[c].sort((a, b) => a.row - b.row)
+        for (const x of colOf[c]) if (x.g === gender) seq.push(x.no)
+      }
+      for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThan(seq[i - 1])
+    }
+  })
+})

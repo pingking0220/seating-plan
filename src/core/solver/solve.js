@@ -79,10 +79,28 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
         if (!grew) break
       }
     }
-    let idx = 0
-    for (let i = 0; i < cols.length; i++) {
-      for (let j = 0; j < targets[i] && idx < sorted.length; j++) {
-        setAssign(ctx, cols[i][j].id, sorted[idx++].id)
+    // 與「男女不同排」併用：男女各自依座號排成隊伍，直行交錯取用
+    const males = sorted.filter((s) => s.gender === 'M')
+    const females = sorted.filter((s) => s.gender === 'F')
+    if (cfg.gender_alt_columns?.enabled && males.length && females.length) {
+      const others = sorted.filter((s) => s.gender !== 'M' && s.gender !== 'F')
+      const queues = males.length >= females.length ? [males, females] : [females, males]
+      ;(queues[0].length <= queues[1].length ? queues[0] : queues[1]).push(...others)
+      for (let i = 0; i < cols.length; i++) {
+        const primary = queues[i % 2]
+        const backup = queues[(i + 1) % 2]
+        for (let j = 0; j < targets[i]; j++) {
+          const stu = primary.shift() || backup.shift()
+          if (!stu) break
+          setAssign(ctx, cols[i][j].id, stu.id)
+        }
+      }
+    } else {
+      let idx = 0
+      for (let i = 0; i < cols.length; i++) {
+        for (let j = 0; j < targets[i] && idx < sorted.length; j++) {
+          setAssign(ctx, cols[i][j].id, sorted[idx++].id)
+        }
       }
     }
   }
@@ -172,8 +190,8 @@ function swapDelta(ctx, cfg, s1, s2, a, b) {
     for (const e of heightEval(ctx, affectedCols)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of genderColumnsEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of fillFrontEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
-    if (cfg.seatno_order_lr?.enabled) for (const e of seatnoOrderEval(ctx, 'lr')) sc += e.penalty * cfg.seatno_order_lr.weight
-    if (cfg.seatno_order_rl?.enabled) for (const e of seatnoOrderEval(ctx, 'rl')) sc += e.penalty * cfg.seatno_order_rl.weight
+    if (cfg.seatno_order_lr?.enabled) for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * cfg.seatno_order_lr.weight
+    if (cfg.seatno_order_rl?.enabled) for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * cfg.seatno_order_rl.weight
     for (const e of colBalanceEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of everyColEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     return sc

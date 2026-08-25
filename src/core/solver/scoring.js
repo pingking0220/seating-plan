@@ -148,8 +148,8 @@ export function totalScore(ctx, cfg) {
   for (const e of heightEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of genderColumnsEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of fillFrontEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
-  for (const e of seatnoOrderEval(ctx, 'lr')) s += e.penalty * weightOf(cfg, e.ruleId)
-  for (const e of seatnoOrderEval(ctx, 'rl')) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of colBalanceEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of everyColEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   return s
@@ -170,8 +170,8 @@ export function fullViolations(ctx, cfg) {
   for (const e of heightEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of genderColumnsEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of fillFrontEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
-  for (const e of seatnoOrderEval(ctx, 'lr')) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
-  for (const e of seatnoOrderEval(ctx, 'rl')) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of colBalanceEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of everyColEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   return out
@@ -252,8 +252,10 @@ function columnsInOrder(ctx) {
 }
 
 /** 座號順序：1 號從第一直行最前面開始，一行坐滿換下一行。
- *  direction 'lr'=由左至右、'rl'=由右至左。懲罰 = 相鄰順序顛倒的組數。 */
-export function seatnoOrderEval(ctx, direction = 'lr') {
+ *  direction 'lr'=由左至右、'rl'=由右至左。懲罰 = 相鄰順序顛倒的組數。
+ *  genderAware=true（與「男女不同排」併用時）：男生、女生各自檢查座號遞增，
+ *  互不干擾 → 男生排按男生座號、女生排按女生座號、左右交錯。 */
+export function seatnoOrderEval(ctx, direction = 'lr', genderAware = false) {
   const ruleId = direction === 'rl' ? 'seatno_order_rl' : 'seatno_order_lr'
   let cols = columnsInOrder(ctx)
   if (direction === 'rl') cols = cols.slice().reverse()
@@ -264,14 +266,15 @@ export function seatnoOrderEval(ctx, direction = 'lr') {
       if (!stuId) continue
       const stu = ctx.studentById.get(stuId)
       if (stu?.seatNo == null) continue
-      occupied.push({ seatId: seat.id, stuId, name: stu.name, no: stu.seatNo })
+      occupied.push({ seatId: seat.id, stuId, name: stu.name, no: stu.seatNo, gender: stu.gender || '' })
     }
   }
   const out = []
-  for (let i = 1; i < occupied.length; i++) {
-    const prev = occupied[i - 1]
-    const cur = occupied[i]
-    if (cur.no < prev.no) {
+  const lastOf = {} // genderAware 時各性別各自的前一位
+  let prevGlobal = null
+  for (const cur of occupied) {
+    const prev = genderAware ? lastOf[cur.gender] : prevGlobal
+    if (prev && cur.no < prev.no) {
       out.push({
         ruleId,
         seatId: cur.seatId,
@@ -280,6 +283,8 @@ export function seatnoOrderEval(ctx, direction = 'lr') {
         message: `${cur.name}（${cur.no}號）排在 ${prev.name}（${prev.no}號）之後，座號順序顛倒`,
       })
     }
+    lastOf[cur.gender] = cur
+    prevGlobal = cur
   }
   return out
 }
