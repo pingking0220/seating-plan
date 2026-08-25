@@ -54,6 +54,12 @@ export function studentEval(ctx, stu, seatId) {
       out.push({ ruleId: 'rel_prefer_adjacent', penalty: adjacent ? 0 : 1, message: adjacent ? `與 ${otherName} 相鄰 ✓` : `未與 ${otherName} 相鄰`, relId: rel.id, isA: rel.a === stu.id })
     } else if (rel.type === 'forbid_same_group') {
       out.push({ ruleId: 'rel_forbid_same_group', penalty: sameGroup ? 2 : 0, message: sameGroup ? `與 ${otherName} 同組（設定為不可同組）` : `與 ${otherName} 不同組 ✓`, relId: rel.id, isA: rel.a === stu.id })
+    } else if (rel.type === 'forbid_same_row') {
+      const sameRow = seat.row === ctx.seatById.get(otherSeat)?.row
+      out.push({ ruleId: 'rel_forbid_same_row', penalty: sameRow ? 2 : 0, message: sameRow ? `與 ${otherName} 同一橫列（設定為不可同列）` : `與 ${otherName} 不同列 ✓`, relId: rel.id, isA: rel.a === stu.id })
+    } else if (rel.type === 'forbid_same_col') {
+      const sameCol = seat.col === ctx.seatById.get(otherSeat)?.col
+      out.push({ ruleId: 'rel_forbid_same_col', penalty: sameCol ? 2 : 0, message: sameCol ? `與 ${otherName} 同一直行（設定為不可同行）` : `與 ${otherName} 不同行 ✓`, relId: rel.id, isA: rel.a === stu.id })
     } else if (rel.type === 'prefer_same_group') {
       out.push({ ruleId: 'rel_prefer_same_group', penalty: sameGroup ? 0 : 1, message: sameGroup ? `與 ${otherName} 同組 ✓` : `未與 ${otherName} 同組`, relId: rel.id, isA: rel.a === stu.id })
     }
@@ -140,6 +146,7 @@ export function totalScore(ctx, cfg) {
   }
   for (const e of groupEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of heightEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of genderColumnsEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   return s
 }
 
@@ -156,5 +163,33 @@ export function fullViolations(ctx, cfg) {
   }
   for (const e of groupEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of heightEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
+  for (const e of genderColumnsEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   return out
+}
+
+/** 男女不同排：每一直行同性別、左右交錯（男女男女…）。
+ *  兩種起始相位（最左排男生起 / 女生起）取違規較少者。 */
+export function genderColumnsEval(ctx) {
+  const cols = [...new Set(ctx.seats.map((s) => s.col))].sort((a, b) => a - b)
+  const colIndex = new Map(cols.map((c, i) => [c, i]))
+  const entries = [] // { seatId, stuId, name, colIdx, gender }
+  for (const [seatId, stuId] of ctx.assign) {
+    const g = ctx.studentById.get(stuId)?.gender
+    if (g !== 'M' && g !== 'F') continue
+    const seat = ctx.seatById.get(seatId)
+    entries.push({ seatId, stuId, colIdx: colIndex.get(seat.col), gender: g })
+  }
+  if (!entries.length) return []
+  const mismatches = (phase) =>
+    entries.filter((e) => ((e.colIdx + phase) % 2 === 0 ? 'M' : 'F') !== e.gender)
+  const m0 = mismatches(0)
+  const m1 = mismatches(1)
+  const best = m0.length <= m1.length ? m0 : m1
+  return best.map((e) => ({
+    ruleId: 'gender_alt_columns',
+    seatId: e.seatId,
+    studentId: e.stuId,
+    penalty: 1,
+    message: `${ctx.studentById.get(e.stuId).name} 在${e.gender === 'M' ? '女' : '男'}生排（第 ${e.colIdx + 1} 直行）`,
+  }))
 }

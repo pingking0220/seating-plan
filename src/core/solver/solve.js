@@ -1,6 +1,6 @@
 // 自動排位：貪婪初始配置 + 兩兩交換局部搜尋（可種子重現）
 import { buildContext, setAssign } from './context.js'
-import { studentEval, studentScore, totalScore, fullViolations, groupEval, heightEval } from './scoring.js'
+import { studentEval, studentScore, totalScore, fullViolations, groupEval, heightEval, genderColumnsEval } from './scoring.js'
 import { defaultRulesConfig } from '../rules/registry.js'
 
 /** 可重現的偽隨機數 */
@@ -126,6 +126,7 @@ function swapDelta(ctx, cfg, s1, s2, a, b) {
     }
     for (const e of groupEval(ctx, affectedGroups)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of heightEval(ctx, affectedCols)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
+    for (const e of genderColumnsEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     return sc
   }
   const before = localScore()

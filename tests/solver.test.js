@@ -121,3 +121,104 @@ describe('solve', () => {
     expect(ms).toBeLessThan(300)
   })
 })
+
+describe('男女不同排（gender_alt_columns）', () => {
+  // 4 直行 × 4 列的簡單教室
+  const layout4 = () => createLayout({
+    grid: { cols: 6, rows: 6 },
+    seats: Array.from({ length: 16 }, (_, i) =>
+      createSeat({ id: 'g' + i, col: 1 + (i % 4), row: 1 + Math.floor(i / 4) })),
+    furniture: [],
+  })
+  const mkStudents = () =>
+    Array.from({ length: 16 }, (_, i) =>
+      stu('s' + i, { gender: i < 8 ? 'M' : 'F' }))
+
+  it('自動排位後每直行單一性別且左右交錯', () => {
+    const r = solve({ layout: layout4(), students: mkStudents(), seed: 2 })
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+    // 驗證實際欄位分佈
+    const layout = layout4()
+    const seatById = new Map(layout.seats.map((s) => [s.id, s]))
+    const students = mkStudents()
+    const stuById = new Map(students.map((s) => [s.id, s]))
+    const colGenders = new Map()
+    for (const a of r.assignments) {
+      const col = seatById.get(a.seatId).col
+      if (!colGenders.has(col)) colGenders.set(col, new Set())
+      colGenders.get(col).add(stuById.get(a.studentId).gender)
+    }
+    for (const [, genders] of colGenders) expect(genders.size).toBe(1)
+    const ordered = [...colGenders.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => [...g][0])
+    for (let i = 1; i < ordered.length; i++) expect(ordered[i]).not.toBe(ordered[i - 1])
+  })
+
+  it('性別未填的學生不計入', () => {
+    const students = Array.from({ length: 6 }, (_, i) => stu('s' + i)) // 全部沒性別
+    const r = solve({ layout: layout4(), students, seed: 1 })
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+  })
+
+  it('關閉規則時不產生違規', () => {
+    const cfg = defaultRulesConfig()
+    cfg.gender_alt_columns.enabled = false
+    // 把全部男生排同一行也不會被記違規
+    const r = solve({ layout: layout4(), students: mkStudents(), rulesConfig: cfg, seed: 1 })
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+  })
+})
+
+describe('不可同列 / 不可同行', () => {
+  const gridLayout = () => createLayout({
+    grid: { cols: 6, rows: 6 },
+    seats: Array.from({ length: 16 }, (_, i) =>
+      createSeat({ id: 'q' + i, col: 1 + (i % 4), row: 1 + Math.floor(i / 4) })),
+    furniture: [],
+  })
+
+  it('forbid_same_row：兩人被排到不同橫列', () => {
+    const students = Array.from({ length: 10 }, (_, i) => stu('s' + i))
+    const r = solve({
+      layout: gridLayout(), students,
+      relations: [{ id: 'r1', a: 's0', b: 's1', type: 'forbid_same_row' }],
+      seed: 1,
+    })
+    const layout = gridLayout()
+    const seatById = new Map(layout.seats.map((s) => [s.id, s]))
+    const pos = Object.fromEntries(r.assignments.map((a) => [a.studentId, seatById.get(a.seatId)]))
+    expect(pos.s0.row).not.toBe(pos.s1.row)
+    expect(r.violations.filter((v) => v.ruleId === 'rel_forbid_same_row')).toHaveLength(0)
+  })
+
+  it('forbid_same_col：兩人被排到不同直行', () => {
+    const students = Array.from({ length: 10 }, (_, i) => stu('s' + i))
+    const r = solve({
+      layout: gridLayout(), students,
+      relations: [{ id: 'r1', a: 's0', b: 's1', type: 'forbid_same_col' }],
+      seed: 1,
+    })
+    const layout = gridLayout()
+    const seatById = new Map(layout.seats.map((s) => [s.id, s]))
+    const pos = Object.fromEntries(r.assignments.map((a) => [a.studentId, seatById.get(a.seatId)]))
+    expect(pos.s0.col).not.toBe(pos.s1.col)
+    expect(r.violations.filter((v) => v.ruleId === 'rel_forbid_same_col')).toHaveLength(0)
+  })
+
+  it('違規時訊息可讀（手動排進同列）', async () => {
+    const { evaluatePlan } = await import('../src/core/solver/solve.js')
+    const layout = gridLayout()
+    const students = [stu('s0', { name: '甲' }), stu('s1', { name: '乙' })]
+    const { violations } = evaluatePlan({
+      layout, students,
+      relations: [{ id: 'r1', a: 's0', b: 's1', type: 'forbid_same_row' }],
+      assignments: [
+        { seatId: 'q0', studentId: 's0', locked: false }, // (1,1)
+        { seatId: 'q1', studentId: 's1', locked: false }, // (2,1) 同列
+      ],
+    })
+    const v = violations.find((x) => x.ruleId === 'rel_forbid_same_row')
+    expect(v.message).toContain('甲')
+    expect(v.message).toContain('乙')
+    expect(v.message).toContain('同一橫列')
+  })
+})
