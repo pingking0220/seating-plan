@@ -146,7 +146,7 @@ export function totalScore(ctx, cfg) {
   }
   for (const e of groupEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of heightEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
-  for (const e of genderColumnsEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of genderColumnsEval(ctx, cfg.gender_alt_columns?.phase)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of fillFrontEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) s += e.penalty * weightOf(cfg, e.ruleId)
@@ -168,7 +168,7 @@ export function fullViolations(ctx, cfg) {
   }
   for (const e of groupEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of heightEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
-  for (const e of genderColumnsEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of genderColumnsEval(ctx, cfg.gender_alt_columns?.phase)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of fillFrontEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
@@ -178,8 +178,8 @@ export function fullViolations(ctx, cfg) {
 }
 
 /** 男女不同排：每一直行同性別、左右交錯（男女男女…）。
- *  兩種起始相位（最左排男生起 / 女生起）取違規較少者。 */
-export function genderColumnsEval(ctx) {
+ *  phasePref：'M'=最左排男生起、'F'=最左排女生起、'auto'=取違規較少的相位。 */
+export function genderColumnsEval(ctx, phasePref = 'auto') {
   const cols = [...new Set(ctx.seats.map((s) => s.col))].sort((a, b) => a - b)
   const colIndex = new Map(cols.map((c, i) => [c, i]))
   const entries = [] // { seatId, stuId, name, colIdx, gender }
@@ -192,9 +192,14 @@ export function genderColumnsEval(ctx) {
   if (!entries.length) return []
   const mismatches = (phase) =>
     entries.filter((e) => ((e.colIdx + phase) % 2 === 0 ? 'M' : 'F') !== e.gender)
-  const m0 = mismatches(0)
-  const m1 = mismatches(1)
-  const best = m0.length <= m1.length ? m0 : m1
+  let best
+  if (phasePref === 'M') best = mismatches(0)
+  else if (phasePref === 'F') best = mismatches(1)
+  else {
+    const m0 = mismatches(0)
+    const m1 = mismatches(1)
+    best = m0.length <= m1.length ? m0 : m1
+  }
   return best.map((e) => ({
     ruleId: 'gender_alt_columns',
     seatId: e.seatId,

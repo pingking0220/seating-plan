@@ -412,3 +412,65 @@ describe('座號順序 + 男女不同排 併用', () => {
     }
   })
 })
+
+describe('男女不同排：男生先 / 女生先相位', () => {
+  const layoutP = () => createLayout({
+    grid: { cols: 6, rows: 6 },
+    seats: Array.from({ length: 16 }, (_, i) =>
+      createSeat({ id: 'p' + i, col: 1 + (i % 4), row: 1 + Math.floor(i / 4) })),
+    furniture: [],
+  })
+  const balanced = () =>
+    Array.from({ length: 16 }, (_, i) => stu('s' + i, { gender: i < 8 ? 'M' : 'F' }))
+
+  function leftmostColGender(r) {
+    const layout = layoutP()
+    const seatById = new Map(layout.seats.map((s) => [s.id, s]))
+    const students = balanced()
+    const stuById = new Map(students.map((s) => [s.id, s]))
+    const minCol = Math.min(...r.assignments.map((a) => seatById.get(a.seatId).col))
+    const genders = new Set(
+      r.assignments
+        .filter((a) => seatById.get(a.seatId).col === minCol)
+        .map((a) => stuById.get(a.studentId).gender),
+    )
+    return [...genders]
+  }
+
+  it("phase='M'：最左排全是男生", () => {
+    const cfg = defaultRulesConfig()
+    cfg.gender_alt_columns.phase = 'M'
+    const r = solve({ layout: layoutP(), students: balanced(), rulesConfig: cfg, seed: 9 })
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+    expect(leftmostColGender(r)).toEqual(['M'])
+  })
+
+  it("phase='F'：最左排全是女生", () => {
+    const cfg = defaultRulesConfig()
+    cfg.gender_alt_columns.phase = 'F'
+    const r = solve({ layout: layoutP(), students: balanced(), rulesConfig: cfg, seed: 9 })
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+    expect(leftmostColGender(r)).toEqual(['F'])
+  })
+
+  it("座號順序併用時 phase='F'：最左排是女生且座號遞增", () => {
+    const cfg = defaultRulesConfig()
+    cfg.seatno_order_lr.enabled = true
+    cfg.gender_alt_columns.phase = 'F'
+    const students = [
+      ...Array.from({ length: 8 }, (_, i) => stu('m' + (i + 1), { seatNo: i + 1, gender: 'M' })),
+      ...Array.from({ length: 8 }, (_, i) => stu('f' + (i + 1), { seatNo: 20 + i + 1, gender: 'F' })),
+    ]
+    const r = solve({ layout: layoutP(), students, rulesConfig: cfg, seed: 9 })
+    expect(r.violations.filter((v) => v.ruleId === 'gender_alt_columns')).toHaveLength(0)
+    expect(r.violations.filter((v) => v.ruleId === 'seatno_order_lr')).toHaveLength(0)
+    const layout = layoutP()
+    const seatById = new Map(layout.seats.map((s) => [s.id, s]))
+    const stuById = new Map(students.map((s) => [s.id, s]))
+    const minCol = Math.min(...r.assignments.map((a) => seatById.get(a.seatId).col))
+    const leftGenders = new Set(
+      r.assignments.filter((a) => seatById.get(a.seatId).col === minCol).map((a) => stuById.get(a.studentId).gender),
+    )
+    expect([...leftGenders]).toEqual(['F'])
+  })
+})

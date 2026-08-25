@@ -44,6 +44,7 @@ const rulesCfg = computed(() => {
   if (!plan.value.rules) plan.value.rules = defaultRulesConfig()
   // 補上新版本新增的規則
   for (const r of RULES) if (!plan.value.rules[r.id]) plan.value.rules[r.id] = { enabled: r.defaultEnabled !== false, weight: r.weight }
+  if (!plan.value.rules.gender_alt_columns.phase) plan.value.rules.gender_alt_columns.phase = 'auto'
   return plan.value.rules
 })
 const ruleGroups = computed(() => {
@@ -322,6 +323,18 @@ const today = new Date().toLocaleDateString('zh-TW')
             <label class="rule-main">
               <input type="checkbox" v-model="rulesCfg[r.id].enabled" @change="store.touchPlan(plan)" />
               <span>{{ r.label }}</span>
+              <select
+                v-if="r.id === 'gender_alt_columns'"
+                v-model="rulesCfg[r.id].phase"
+                :disabled="!rulesCfg[r.id].enabled"
+                class="phase-sel"
+                @click.prevent
+                @change="store.touchPlan(plan)"
+              >
+                <option value="auto">自動</option>
+                <option value="M">男生先（最左排男生）</option>
+                <option value="F">女生先（最左排女生）</option>
+              </select>
               <span class="dim desc">{{ r.desc }}</span>
             </label>
             <input
@@ -383,7 +396,8 @@ const today = new Date().toLocaleDateString('zh-TW')
 .rules-modal h3 { margin: 0; }
 .rule-group h4 { margin: 14px 0 6px; color: var(--text-dim); font-size: 13px; letter-spacing: 1px; }
 .rule-row { display: grid; grid-template-columns: 1fr 140px 24px; gap: 10px; align-items: center; padding: 5px 0; }
-.rule-main { display: flex; align-items: baseline; gap: 8px; }
+.rule-main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.phase-sel { font-size: 12.5px; padding: 3px 6px; }
 .rule-main .desc { font-size: 12px; }
 .rule-row .w { text-align: right; font-size: 13px; color: var(--text-dim); }
 @media print {

@@ -56,25 +56,28 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
     }
     const cols = [...byCol.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([, seats]) => seats.sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0)))
+      .map(([, seats], leftIdx) => ({
+        leftIdx, // 以「最左排 = 0」計的索引，男女相位以此為準（與填入方向無關）
+        seats: seats.sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0)),
+      }))
     if (orderDir === 'rl') cols.reverse()
     const sorted = pool.slice().sort((a, b) => (a.seatNo ?? 999) - (b.seatNo ?? 999))
-    const capacity = cols.reduce((x, c) => x + c.length, 0)
+    const capacity = cols.reduce((x, c) => x + c.seats.length, 0)
     const n = Math.min(sorted.length, capacity)
     // 每行目標人數：開「每排人數平均」就均分，否則一行坐滿換下一行
-    const targets = cols.map((c) => c.length)
+    const targets = cols.map((c) => c.seats.length)
     if (cfg.col_balance?.enabled && cols.length) {
       const base = Math.floor(n / cols.length)
       let extra = n % cols.length
       for (let i = 0; i < cols.length; i++) {
-        targets[i] = Math.min(base + (extra > 0 ? 1 : 0), cols[i].length)
+        targets[i] = Math.min(base + (extra > 0 ? 1 : 0), cols[i].seats.length)
         if (extra > 0) extra--
       }
       let total = targets.reduce((x, y) => x + y, 0)
       while (total < n) {
         let grew = false
         for (let i = 0; i < cols.length && total < n; i++) {
-          if (targets[i] < cols[i].length) { targets[i]++; total++; grew = true }
+          if (targets[i] < cols[i].seats.length) { targets[i]++; total++; grew = true }
         }
         if (!grew) break
       }
@@ -84,22 +87,27 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
     const females = sorted.filter((s) => s.gender === 'F')
     if (cfg.gender_alt_columns?.enabled && males.length && females.length) {
       const others = sorted.filter((s) => s.gender !== 'M' && s.gender !== 'F')
-      const queues = males.length >= females.length ? [males, females] : [females, males]
+      // 相位：男生先/女生先指定「最左排」性別；auto 則人數多的先
+      const phase = cfg.gender_alt_columns?.phase
+      const queues =
+        phase === 'M' ? [males, females]
+        : phase === 'F' ? [females, males]
+        : males.length >= females.length ? [males, females] : [females, males]
       ;(queues[0].length <= queues[1].length ? queues[0] : queues[1]).push(...others)
       for (let i = 0; i < cols.length; i++) {
-        const primary = queues[i % 2]
-        const backup = queues[(i + 1) % 2]
+        const primary = queues[cols[i].leftIdx % 2]
+        const backup = queues[(cols[i].leftIdx + 1) % 2]
         for (let j = 0; j < targets[i]; j++) {
           const stu = primary.shift() || backup.shift()
           if (!stu) break
-          setAssign(ctx, cols[i][j].id, stu.id)
+          setAssign(ctx, cols[i].seats[j].id, stu.id)
         }
       }
     } else {
       let idx = 0
       for (let i = 0; i < cols.length; i++) {
         for (let j = 0; j < targets[i] && idx < sorted.length; j++) {
-          setAssign(ctx, cols[i][j].id, sorted[idx++].id)
+          setAssign(ctx, cols[i].seats[j].id, sorted[idx++].id)
         }
       }
     }
@@ -188,7 +196,7 @@ function swapDelta(ctx, cfg, s1, s2, a, b) {
     }
     for (const e of groupEval(ctx, affectedGroups)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of heightEval(ctx, affectedCols)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
-    for (const e of genderColumnsEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
+    for (const e of genderColumnsEval(ctx, cfg.gender_alt_columns?.phase)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of fillFrontEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     if (cfg.seatno_order_lr?.enabled) for (const e of seatnoOrderEval(ctx, 'lr', !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * cfg.seatno_order_lr.weight
     if (cfg.seatno_order_rl?.enabled) for (const e of seatnoOrderEval(ctx, 'rl', !!cfg.gender_alt_columns?.enabled)) sc += e.penalty * cfg.seatno_order_rl.weight
