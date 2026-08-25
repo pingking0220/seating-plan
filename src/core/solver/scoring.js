@@ -147,6 +147,7 @@ export function totalScore(ctx, cfg) {
   for (const e of groupEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of heightEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of genderColumnsEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of fillFrontEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   return s
 }
 
@@ -164,6 +165,7 @@ export function fullViolations(ctx, cfg) {
   for (const e of groupEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of heightEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of genderColumnsEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of fillFrontEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   return out
 }
 
@@ -192,4 +194,31 @@ export function genderColumnsEval(ctx) {
     penalty: 1,
     message: `${ctx.studentById.get(e.stuId).name} 在${e.gender === 'M' ? '女' : '男'}生排（第 ${e.colIdx + 1} 直行）`,
   }))
+}
+
+/** 往前坐：依閱讀順序（前到後、左到右），學生座位前面不應有空位。
+ *  每位學生的懲罰 = 排在他前面的空位數（收斂後空位全部沉到最後面）。 */
+export function fillFrontEval(ctx) {
+  const order = ctx.seats
+    .slice()
+    .sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0) || a.col - b.col)
+  const out = []
+  let emptiesBefore = 0
+  for (const seat of order) {
+    const stuId = ctx.assign.get(seat.id)
+    if (!stuId) {
+      emptiesBefore++
+      continue
+    }
+    if (emptiesBefore > 0) {
+      out.push({
+        ruleId: 'fill_front',
+        seatId: seat.id,
+        studentId: stuId,
+        penalty: Math.min(emptiesBefore, 5),
+        message: `${ctx.studentById.get(stuId).name} 前面還有 ${emptiesBefore} 個空位`,
+      })
+    }
+  }
+  return out
 }

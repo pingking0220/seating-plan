@@ -14,6 +14,7 @@ export const RULES = [
   { id: 'rel_prefer_same_group', label: '建議同組', desc: '指定的兩人盡量同組', weight: 4, group: '人際關係' },
   { id: 'group_gender_balance', label: '分組性別平衡', desc: '每組男女人數差不超過 1', weight: 3, group: '分組品質' },
   { id: 'gender_alt_columns', label: '男女不同排', desc: '每一直行同性別，左右交錯排列（男女男女…）', weight: 5, group: '分組品質' },
+  { id: 'fill_front', label: '往前坐不留空', desc: '座位往前填滿，空位留在最後面、不夾在中間', weight: 4, group: '座位配置' },
   { id: 'height_order', label: '身高由前而後', desc: '同一直行後面的人比前面高（需身高資料）', weight: 2, group: '生理' },
   { id: 'avoid_same_seat', label: '避免同座位', desc: '不坐上次紀錄的同一個座位（需先封存歷史）', weight: 4, group: '公平輪替' },
   { id: 'avoid_same_neighbors', label: '避免同鄰居', desc: '盡量換到不同的鄰座同學', weight: 2, group: '公平輪替' },

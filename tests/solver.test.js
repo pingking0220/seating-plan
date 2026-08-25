@@ -222,3 +222,39 @@ describe('不可同列 / 不可同行', () => {
     expect(v.message).toContain('同一橫列')
   })
 })
+
+describe('往前坐不留空（fill_front）', () => {
+  // 4 直行 × 5 列 = 20 座，只有 13 人 → 空位應全部在最後
+  const bigLayout = () => createLayout({
+    grid: { cols: 6, rows: 7 },
+    seats: Array.from({ length: 20 }, (_, i) =>
+      createSeat({ id: 'w' + i, col: 1 + (i % 4), row: 1 + Math.floor(i / 4) })),
+    furniture: [],
+  })
+
+  it('自動排位後空位全部沉到最後面', () => {
+    const students = Array.from({ length: 13 }, (_, i) => stu('s' + i))
+    const r = solve({ layout: bigLayout(), students, seed: 5 })
+    expect(r.violations.filter((v) => v.ruleId === 'fill_front')).toHaveLength(0)
+    // 依閱讀順序（row, col），前 13 個座位都要有人
+    const layout = bigLayout()
+    const ordered = layout.seats.slice().sort((a, b) => a.row - b.row || a.col - b.col)
+    const occupied = new Set(r.assignments.map((a) => a.seatId))
+    for (let i = 0; i < 13; i++) {
+      expect(occupied.has(ordered[i].id), `閱讀順序第 ${i + 1} 個座位應有人`).toBe(true)
+    }
+  })
+
+  it('手動把人排在後面時回報「前面還有空位」', async () => {
+    const { evaluatePlan } = await import('../src/core/solver/solve.js')
+    const layout = bigLayout()
+    const { violations } = evaluatePlan({
+      layout,
+      students: [stu('s0', { name: '甲' })],
+      assignments: [{ seatId: 'w19', studentId: 's0', locked: false }], // 最後一個座位
+    })
+    const v = violations.find((x) => x.ruleId === 'fill_front')
+    expect(v.message).toContain('甲')
+    expect(v.message).toContain('空位')
+  })
+})
