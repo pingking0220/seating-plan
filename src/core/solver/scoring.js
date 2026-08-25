@@ -148,6 +148,10 @@ export function totalScore(ctx, cfg) {
   for (const e of heightEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of genderColumnsEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   for (const e of fillFrontEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of seatnoOrderEval(ctx, 'lr')) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of seatnoOrderEval(ctx, 'rl')) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of colBalanceEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
+  for (const e of everyColEval(ctx)) s += e.penalty * weightOf(cfg, e.ruleId)
   return s
 }
 
@@ -166,6 +170,10 @@ export function fullViolations(ctx, cfg) {
   for (const e of heightEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   for (const e of genderColumnsEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
   for (const e of fillFrontEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of seatnoOrderEval(ctx, 'lr')) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of seatnoOrderEval(ctx, 'rl')) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, seatId: e.seatId, studentId: e.studentId, message: e.message })
+  for (const e of colBalanceEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
+  for (const e of everyColEval(ctx)) if (weightOf(cfg, e.ruleId) > 0) out.push({ ruleId: e.ruleId, message: e.message })
   return out
 }
 
@@ -226,5 +234,81 @@ export function fillFrontEval(ctx) {
       }
     }
   }
+  return out
+}
+
+/** 依直行分組（左到右排序），每行內由前到後 */
+function columnsInOrder(ctx) {
+  const byCol = new Map()
+  for (const seat of ctx.seats) {
+    if (!byCol.has(seat.col)) byCol.set(seat.col, [])
+    byCol.get(seat.col).push(seat)
+  }
+  const cols = [...byCol.entries()].sort((a, b) => a[0] - b[0])
+  for (const [, seats] of cols) {
+    seats.sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0))
+  }
+  return cols
+}
+
+/** 座號順序：1 號從第一直行最前面開始，一行坐滿換下一行。
+ *  direction 'lr'=由左至右、'rl'=由右至左。懲罰 = 相鄰順序顛倒的組數。 */
+export function seatnoOrderEval(ctx, direction = 'lr') {
+  const ruleId = direction === 'rl' ? 'seatno_order_rl' : 'seatno_order_lr'
+  let cols = columnsInOrder(ctx)
+  if (direction === 'rl') cols = cols.slice().reverse()
+  const occupied = []
+  for (const [, seats] of cols) {
+    for (const seat of seats) {
+      const stuId = ctx.assign.get(seat.id)
+      if (!stuId) continue
+      const stu = ctx.studentById.get(stuId)
+      if (stu?.seatNo == null) continue
+      occupied.push({ seatId: seat.id, stuId, name: stu.name, no: stu.seatNo })
+    }
+  }
+  const out = []
+  for (let i = 1; i < occupied.length; i++) {
+    const prev = occupied[i - 1]
+    const cur = occupied[i]
+    if (cur.no < prev.no) {
+      out.push({
+        ruleId,
+        seatId: cur.seatId,
+        studentId: cur.stuId,
+        penalty: 1,
+        message: `${cur.name}（${cur.no}號）排在 ${prev.name}（${prev.no}號）之後，座號順序顛倒`,
+      })
+    }
+  }
+  return out
+}
+
+/** 每排人數差異不超過兩人：各直行人數 max-min > 2 就記懲罰 */
+export function colBalanceEval(ctx) {
+  const cols = columnsInOrder(ctx)
+  if (cols.length < 2 || ctx.assign.size === 0) return []
+  const counts = cols.map(([, seats]) => seats.filter((s) => ctx.assign.get(s.id)).length)
+  const max = Math.max(...counts)
+  const min = Math.min(...counts)
+  if (max - min <= 2) return []
+  return [{
+    ruleId: 'col_balance',
+    penalty: max - min - 2,
+    message: `各直行人數差異過大（最多 ${max} 人、最少 ${min} 人，差 ${max - min}）`,
+  }]
+}
+
+/** 每排皆要安排座位：有人數足夠時，每一直行至少要有一人 */
+export function everyColEval(ctx) {
+  const cols = columnsInOrder(ctx)
+  if (ctx.assign.size < cols.length) return [] // 人數比行數少時本來就填不滿
+  const out = []
+  cols.forEach(([, seats], i) => {
+    const count = seats.filter((s) => ctx.assign.get(s.id)).length
+    if (count === 0) {
+      out.push({ ruleId: 'every_col', penalty: 2, message: `第 ${i + 1} 直行整排沒人` })
+    }
+  })
   return out
 }

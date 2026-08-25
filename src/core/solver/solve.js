@@ -1,6 +1,6 @@
 // 自動排位：貪婪初始配置 + 兩兩交換局部搜尋（可種子重現）
 import { buildContext, setAssign } from './context.js'
-import { studentEval, studentScore, totalScore, fullViolations, groupEval, heightEval, genderColumnsEval, fillFrontEval } from './scoring.js'
+import { studentEval, studentScore, totalScore, fullViolations, groupEval, heightEval, genderColumnsEval, fillFrontEval, seatnoOrderEval, colBalanceEval, everyColEval } from './scoring.js'
 import { defaultRulesConfig } from '../rules/registry.js'
 
 /** 可重現的偽隨機數 */
@@ -44,6 +44,49 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
     infeasible.push(`無障礙座位不足：${wheelchairCount} 位輪椅生 > ${ctx.accessibleSeats.size} 個無障礙座`)
   }
 
+  // 座號順序規則開啟時：直接按座號序列建立初始解
+  // （逐一貪婪 + 交換搜尋難以收斂到全域排序；序列初始解再讓局部搜尋處理其他規則）
+  const orderDir = cfg.seatno_order_lr?.enabled ? 'lr' : cfg.seatno_order_rl?.enabled ? 'rl' : null
+  if (orderDir) {
+    const byCol = new Map()
+    for (const s of ctx.seats) {
+      if (lockedSeatIds.has(s.id) || ctx.assign.get(s.id)) continue
+      if (!byCol.has(s.col)) byCol.set(s.col, [])
+      byCol.get(s.col).push(s)
+    }
+    const cols = [...byCol.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, seats]) => seats.sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0)))
+    if (orderDir === 'rl') cols.reverse()
+    const sorted = pool.slice().sort((a, b) => (a.seatNo ?? 999) - (b.seatNo ?? 999))
+    const capacity = cols.reduce((x, c) => x + c.length, 0)
+    const n = Math.min(sorted.length, capacity)
+    // 每行目標人數：開「每排人數平均」就均分，否則一行坐滿換下一行
+    const targets = cols.map((c) => c.length)
+    if (cfg.col_balance?.enabled && cols.length) {
+      const base = Math.floor(n / cols.length)
+      let extra = n % cols.length
+      for (let i = 0; i < cols.length; i++) {
+        targets[i] = Math.min(base + (extra > 0 ? 1 : 0), cols[i].length)
+        if (extra > 0) extra--
+      }
+      let total = targets.reduce((x, y) => x + y, 0)
+      while (total < n) {
+        let grew = false
+        for (let i = 0; i < cols.length && total < n; i++) {
+          if (targets[i] < cols[i].length) { targets[i]++; total++; grew = true }
+        }
+        if (!grew) break
+      }
+    }
+    let idx = 0
+    for (let i = 0; i < cols.length; i++) {
+      for (let j = 0; j < targets[i] && idx < sorted.length; j++) {
+        setAssign(ctx, cols[i][j].id, sorted[idx++].id)
+      }
+    }
+  }
+
   // 貪婪：受限越多的學生越先安置
   const tightness = (s) =>
     (s.traits?.includes('wheelchair') ? 100 : 0) +
@@ -52,6 +95,7 @@ export function solve({ layout, students, relations = [], rulesConfig, locked = 
   const order = pool.slice().sort((a, b) => tightness(b) - tightness(a) || (a.seatNo ?? 999) - (b.seatNo ?? 999))
 
   for (const stu of order) {
+    if (ctx.seatOf.get(stu.id)) continue // 序列初始解已安置
     let best = null
     let bestScore = Infinity
     for (const seat of freeSeats()) {
@@ -128,6 +172,10 @@ function swapDelta(ctx, cfg, s1, s2, a, b) {
     for (const e of heightEval(ctx, affectedCols)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of genderColumnsEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     for (const e of fillFrontEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
+    if (cfg.seatno_order_lr?.enabled) for (const e of seatnoOrderEval(ctx, 'lr')) sc += e.penalty * cfg.seatno_order_lr.weight
+    if (cfg.seatno_order_rl?.enabled) for (const e of seatnoOrderEval(ctx, 'rl')) sc += e.penalty * cfg.seatno_order_rl.weight
+    for (const e of colBalanceEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
+    for (const e of everyColEval(ctx)) sc += e.penalty * (cfg[e.ruleId]?.enabled ? cfg[e.ruleId].weight : 0)
     return sc
   }
   const before = localScore()

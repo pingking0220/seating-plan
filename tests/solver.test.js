@@ -284,3 +284,84 @@ describe('往前坐不留空（fill_front）', () => {
     expect(v.message).toContain('同一直行前面還有')
   })
 })
+
+describe('座號順序 / 每排人數平均 / 每排皆要有人', () => {
+  const layout45 = () => createLayout({
+    grid: { cols: 6, rows: 7 },
+    seats: Array.from({ length: 20 }, (_, i) =>
+      createSeat({ id: 'z' + i, col: 1 + (i % 4), row: 1 + Math.floor(i / 4) })),
+    furniture: [],
+  })
+  const numbered = (n) => Array.from({ length: n }, (_, i) => stu('s' + (i + 1), { seatNo: i + 1 }))
+
+  function colRowOf(layout, seatId) {
+    const s = layout.seats.find((x) => x.id === seatId)
+    return { col: s.col, row: s.row }
+  }
+
+  it('座號順序（由左至右）：座號沿直行遞增', () => {
+    const cfg = defaultRulesConfig()
+    cfg.seatno_order_lr.enabled = true
+    cfg.gender_alt_columns.enabled = false
+    const r = solve({ layout: layout45(), students: numbered(12), rulesConfig: cfg, seed: 3 })
+    expect(r.violations.filter((v) => v.ruleId === 'seatno_order_lr')).toHaveLength(0)
+    const layout = layout45()
+    const seq = r.assignments
+      .map((a) => ({ ...colRowOf(layout, a.seatId), no: +a.studentId.slice(1) }))
+      .sort((a, b) => a.col - b.col || a.row - b.row)
+      .map((x) => x.no)
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThan(seq[i - 1])
+  })
+
+  it('座號順序（由右至左）：最右直行是最小座號', () => {
+    const cfg = defaultRulesConfig()
+    cfg.seatno_order_rl.enabled = true
+    cfg.gender_alt_columns.enabled = false
+    const r = solve({ layout: layout45(), students: numbered(12), rulesConfig: cfg, seed: 3 })
+    expect(r.violations.filter((v) => v.ruleId === 'seatno_order_rl')).toHaveLength(0)
+    const layout = layout45()
+    const seq = r.assignments
+      .map((a) => ({ ...colRowOf(layout, a.seatId), no: +a.studentId.slice(1) }))
+      .sort((a, b) => b.col - a.col || a.row - b.row)
+      .map((x) => x.no)
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThan(seq[i - 1])
+  })
+
+  it('每排人數平均：各直行人數差 <= 2', () => {
+    const r = solve({ layout: layout45(), students: numbered(10), seed: 4 })
+    expect(r.violations.filter((v) => v.ruleId === 'col_balance')).toHaveLength(0)
+    const layout = layout45()
+    const counts = {}
+    for (const a of r.assignments) {
+      const { col } = colRowOf(layout, a.seatId)
+      counts[col] = (counts[col] || 0) + 1
+    }
+    const vals = Object.values(counts)
+    expect(Math.max(...vals) - Math.min(...vals)).toBeLessThanOrEqual(2)
+  })
+
+  it('每排皆要有人：手動空出一整行會被回報', async () => {
+    const { evaluatePlan } = await import('../src/core/solver/solve.js')
+    const layout = layout45()
+    // 8 人全部塞在 col1、col2（col3、col4 整行空）
+    const students = numbered(8)
+    const seats12 = layout.seats.filter((s) => s.col <= 2).slice(0, 8)
+    const assignments = seats12.map((s, i) => ({ seatId: s.id, studentId: students[i].id, locked: false }))
+    const { violations } = evaluatePlan({ layout, students, assignments })
+    const v = violations.filter((x) => x.ruleId === 'every_col')
+    expect(v.length).toBe(2)
+    expect(v[0].message).toContain('整排沒人')
+  })
+
+  it('人數比行數少時不強求每排有人', async () => {
+    const { evaluatePlan } = await import('../src/core/solver/solve.js')
+    const layout = layout45()
+    const students = numbered(2)
+    const seats = layout.seats.filter((s) => s.col === 1).slice(0, 2)
+    const { violations } = evaluatePlan({
+      layout, students,
+      assignments: seats.map((s, i) => ({ seatId: s.id, studentId: students[i].id, locked: false })),
+    })
+    expect(violations.filter((x) => x.ruleId === 'every_col')).toHaveLength(0)
+  })
+})

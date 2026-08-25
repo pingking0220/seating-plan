@@ -43,7 +43,7 @@ const seatCount = computed(() => layout.value.seats.filter((s) => s.enabled).len
 const rulesCfg = computed(() => {
   if (!plan.value.rules) plan.value.rules = defaultRulesConfig()
   // 補上新版本新增的規則
-  for (const r of RULES) if (!plan.value.rules[r.id]) plan.value.rules[r.id] = { enabled: true, weight: r.weight }
+  for (const r of RULES) if (!plan.value.rules[r.id]) plan.value.rules[r.id] = { enabled: r.defaultEnabled !== false, weight: r.weight }
   return plan.value.rules
 })
 const ruleGroups = computed(() => {
