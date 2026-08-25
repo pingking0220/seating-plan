@@ -232,17 +232,43 @@ describe('往前坐不留空（fill_front）', () => {
     furniture: [],
   })
 
-  it('自動排位後空位全部沉到最後面', () => {
+  it('自動排位後每一直行由前往後坐滿、空位在行尾', () => {
     const students = Array.from({ length: 13 }, (_, i) => stu('s' + i))
     const r = solve({ layout: bigLayout(), students, seed: 5 })
     expect(r.violations.filter((v) => v.ruleId === 'fill_front')).toHaveLength(0)
-    // 依閱讀順序（row, col），前 13 個座位都要有人
     const layout = bigLayout()
-    const ordered = layout.seats.slice().sort((a, b) => a.row - b.row || a.col - b.col)
     const occupied = new Set(r.assignments.map((a) => a.seatId))
-    for (let i = 0; i < 13; i++) {
-      expect(occupied.has(ordered[i].id), `閱讀順序第 ${i + 1} 個座位應有人`).toBe(true)
+    const byCol = {}
+    for (const s of layout.seats) (byCol[s.col] = byCol[s.col] || []).push(s)
+    for (const col of Object.keys(byCol)) {
+      const seats = byCol[col].sort((a, b) => a.row - b.row)
+      let seenEmpty = false
+      for (const s of seats) {
+        if (!occupied.has(s.id)) seenEmpty = true
+        else expect(seenEmpty, `第 ${col} 行有人坐在空位後面`).toBe(false)
+      }
     }
+  })
+
+  it('空位在各行行尾時不算違規（教室前方為基準）', async () => {
+    const { evaluatePlan } = await import('../src/core/solver/solve.js')
+    const layout = bigLayout()
+    // 每一直行取前 3 個座位坐滿、行尾留 2 空 → 應零違規
+    const byCol = {}
+    for (const s of layout.seats) (byCol[s.col] = byCol[s.col] || []).push(s)
+    const assignments = []
+    const studentsList = []
+    let n = 0
+    for (const col of Object.keys(byCol)) {
+      const seats = byCol[col].sort((a, b) => a.row - b.row)
+      for (let i = 0; i < 3; i++) {
+        const st = stu('t' + n++)
+        studentsList.push(st)
+        assignments.push({ seatId: seats[i].id, studentId: st.id, locked: false })
+      }
+    }
+    const { violations } = evaluatePlan({ layout, students: studentsList, assignments })
+    expect(violations.filter((v) => v.ruleId === 'fill_front')).toHaveLength(0)
   })
 
   it('手動把人排在後面時回報「前面還有空位」', async () => {
@@ -255,6 +281,6 @@ describe('往前坐不留空（fill_front）', () => {
     })
     const v = violations.find((x) => x.ruleId === 'fill_front')
     expect(v.message).toContain('甲')
-    expect(v.message).toContain('空位')
+    expect(v.message).toContain('同一直行前面還有')
   })
 })

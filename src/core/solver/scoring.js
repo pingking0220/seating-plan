@@ -196,28 +196,34 @@ export function genderColumnsEval(ctx) {
   }))
 }
 
-/** 往前坐：依閱讀順序（前到後、左到右），學生座位前面不應有空位。
- *  每位學生的懲罰 = 排在他前面的空位數（收斂後空位全部沉到最後面）。 */
+/** 往前坐：以教室前方（黑板）為基準，每一直行各自由前往後坐滿。
+ *  每位學生的懲罰 = 同一直行、排在他前面（更靠黑板）的空位數；
+ *  空位留在各行最後面是正常的，不算違規。 */
 export function fillFrontEval(ctx) {
-  const order = ctx.seats
-    .slice()
-    .sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0) || a.col - b.col)
+  const byCol = new Map()
+  for (const seat of ctx.seats) {
+    if (!byCol.has(seat.col)) byCol.set(seat.col, [])
+    byCol.get(seat.col).push(seat)
+  }
   const out = []
-  let emptiesBefore = 0
-  for (const seat of order) {
-    const stuId = ctx.assign.get(seat.id)
-    if (!stuId) {
-      emptiesBefore++
-      continue
-    }
-    if (emptiesBefore > 0) {
-      out.push({
-        ruleId: 'fill_front',
-        seatId: seat.id,
-        studentId: stuId,
-        penalty: Math.min(emptiesBefore, 5),
-        message: `${ctx.studentById.get(stuId).name} 前面還有 ${emptiesBefore} 個空位`,
-      })
+  for (const [, seats] of byCol) {
+    seats.sort((a, b) => (ctx.rowRank.get(a.id) ?? 0) - (ctx.rowRank.get(b.id) ?? 0))
+    let emptiesBefore = 0
+    for (const seat of seats) {
+      const stuId = ctx.assign.get(seat.id)
+      if (!stuId) {
+        emptiesBefore++
+        continue
+      }
+      if (emptiesBefore > 0) {
+        out.push({
+          ruleId: 'fill_front',
+          seatId: seat.id,
+          studentId: stuId,
+          penalty: Math.min(emptiesBefore, 5),
+          message: `${ctx.studentById.get(stuId).name} 同一直行前面還有 ${emptiesBefore} 個空位`,
+        })
+      }
     }
   }
   return out
