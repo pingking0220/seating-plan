@@ -31,6 +31,7 @@ export function createStudent(partial = {}) {
     height: null, // 公分，選填
     traits: [], // trait id 陣列
     note: '',
+    points: 0, // 加減分（班級經營）
     active: true, // 轉出學生設 false 保留紀錄
     ...partial,
   }

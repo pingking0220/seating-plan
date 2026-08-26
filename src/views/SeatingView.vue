@@ -103,6 +103,11 @@ function onSeatClick({ id: seatId }) {
   const p = plan.value
   const seat = layout.value.seats.find((s) => s.id === seatId)
   if (!seat?.enabled) { flash('這個座位已停用'); return }
+  if (pointsMode.value) {
+    const occupant = studentAtSeat.value.get(seatId)
+    if (occupant) applyPoints(occupant, seatId)
+    return
+  }
   if (selection.value) {
     const r = place(p, selection.value, seatId)
     if (!r.ok) {
@@ -171,6 +176,44 @@ const lastArchive = computed(() => {
   return rec ? new Date(rec.date).toLocaleDateString('zh-TW') : null
 })
 
+/* ---------- 畫面縮放（放大座位格與字體） ---------- */
+const zoom = computed({
+  get: () => plan.value.zoom ?? 1.25,
+  set: (v) => {
+    plan.value.zoom = v
+    store.touchPlan(plan.value)
+  },
+})
+function zoomBy(step) {
+  zoom.value = Math.round(Math.min(2, Math.max(1, zoom.value + step)) * 100) / 100
+}
+
+/* ---------- 加減分模式 ---------- */
+const pointsMode = computed({
+  get: () => !!plan.value.pointsMode,
+  set: (v) => {
+    plan.value.pointsMode = v
+    store.touchPlan(plan.value)
+  },
+})
+const pointDelta = ref(1) // +1 或 -1
+const ptFlash = ref(null) // { seatId, delta, n } 點擊回饋動畫
+let ptFlashN = 0
+function applyPoints(stu, seatId) {
+  store.addPoints(cls.value.id, stu.id, pointDelta.value)
+  ptFlash.value = { seatId, delta: pointDelta.value, n: ++ptFlashN }
+}
+function resetPoints() {
+  if (confirm(`把 ${cls.value.name} 全班的加減分歸零？`)) {
+    store.resetPoints(cls.value.id)
+  }
+}
+/** 座位姓名字級：名字越長字越小，避免超出座位格 */
+function nameFontSize(name) {
+  const len = (name || '').length
+  return len >= 5 ? 9 : len === 4 ? 10.5 : 13.5
+}
+
 /* ---------- 匯出 ---------- */
 const boardEl = ref(null)
 function doPrint() {
@@ -214,19 +257,39 @@ const today = new Date().toLocaleDateString('zh-TW')
       <div class="view-toggle">
         <button :class="{ active: viewMode === 'student' }" @click="viewMode = 'student'">🧑‍🎓 學生視角</button>
         <button :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">🧑‍🏫 老師視角</button>
+        <span class="zoom-group">
+          <button :disabled="zoom <= 1" title="縮小" @click="zoomBy(-0.25)">🔍−</button>
+          <span class="dim zoom-label">{{ Math.round(zoom * 100) }}%</span>
+          <button :disabled="zoom >= 2" title="放大" @click="zoomBy(0.25)">🔍＋</button>
+        </span>
       </div>
       <div class="batch">
-        <button class="primary" @click="autoArrange(false)">🎲 自動排位</button>
-        <button @click="autoArrange(true)">換一個方案</button>
-        <button @click="showRules = true">⚖️ 規則</button>
-        <button @click="fill">依座號填入</button>
-        <button @click="clearAll">清空</button>
-        <button @click="archive">📌 封存輪替</button>
+        <button
+          :class="{ 'pts-on': pointsMode }"
+          :title="pointsMode ? '關閉加減分，回到編排模式' : '開啟後點學生即可加減分'"
+          @click="pointsMode = !pointsMode"
+        >⭐ 加減分</button>
+        <template v-if="pointsMode">
+          <button class="pt-btn" :class="{ 'plus-on': pointDelta === 1 }" @click="pointDelta = 1">＋1</button>
+          <button class="pt-btn" :class="{ 'minus-on': pointDelta === -1 }" @click="pointDelta = -1">−1</button>
+          <button @click="resetPoints">歸零</button>
+        </template>
+        <template v-else>
+          <button class="primary" @click="autoArrange(false)">🎲 自動排位</button>
+          <button @click="autoArrange(true)">換一個方案</button>
+          <button @click="showRules = true">⚖️ 規則</button>
+          <button @click="fill">依座號填入</button>
+          <button @click="clearAll">清空</button>
+          <button @click="archive">📌 封存輪替</button>
+        </template>
         <button @click="doPrint">🖨️ 列印</button>
         <button @click="exportPng">🖼️ PNG</button>
-        <button @click="exportXlsx">📊 Excel</button>
+        <button v-if="!pointsMode" @click="exportXlsx">📊 Excel</button>
       </div>
     </div>
+    <p v-if="pointsMode" class="pts-hint no-print">
+      ⭐ 加減分模式：點座位上的學生就{{ pointDelta === 1 ? '加' : '扣' }} 1 分（右下角徽章是目前分數）。編排功能已暫停，再按一次「⭐ 加減分」關閉。
+    </p>
 
     <p v-if="hint" class="hint no-print">⚠ {{ hint }}</p>
     <div v-if="infeasible.length" class="infeasible no-print">
@@ -241,24 +304,50 @@ const today = new Date().toLocaleDateString('zh-TW')
             <p>{{ cls.name }}・{{ viewMode === 'teacher' ? '老師視角（前方在下）' : '學生視角（前方在上）' }}・{{ today }}</p>
           </div>
           <div class="front-label">{{ viewMode === 'teacher' ? '▼ 前方（黑板）在下' : '▲ 前方（黑板）在上' }}</div>
-          <SeatCanvas
-            :layout="viewLayout"
-            :selected="selection?.fromSeatId ? [selection.fromSeatId] : []"
-            mode="seating"
-            @select="onSeatClick"
-            @clear-select="onClearSelect"
-          >
-            <template #seat-label="{ seat, cx, cy }">
-              <text :x="cx" :y="cy - 2" text-anchor="middle" font-size="8.5" fill="#64748b">
-                {{ studentAtSeat.get(seat.id)?.seatNo ?? '' }}
-              </text>
-              <text :x="cx" :y="cy + 10" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2937">
-                {{ studentAtSeat.get(seat.id)?.name ?? '' }}
-              </text>
-              <text v-if="lockedSeats.has(seat.id)" :x="cx - 13" :y="cy - 8" font-size="9">🔒</text>
-              <circle v-if="conflictSeatIds.has(seat.id)" :cx="cx + 13" :cy="cy - 12" r="4.5" fill="#f59e0b" class="no-print-svg" />
-            </template>
-          </SeatCanvas>
+          <div class="canvas-scroll">
+            <div class="canvas-zoom" :style="{ width: zoom * 100 + '%' }">
+              <SeatCanvas
+                :layout="viewLayout"
+                :selected="selection?.fromSeatId ? [selection.fromSeatId] : []"
+                mode="seating"
+                @select="onSeatClick"
+                @clear-select="onClearSelect"
+              >
+                <template #seat-label="{ seat, cx, cy }">
+                  <text :x="cx" :y="cy - 6" text-anchor="middle" font-size="9.5" fill="#64748b">
+                    {{ studentAtSeat.get(seat.id)?.seatNo ?? '' }}
+                  </text>
+                  <text
+                    :x="cx" :y="cy + 10" text-anchor="middle"
+                    :font-size="nameFontSize(studentAtSeat.get(seat.id)?.name)"
+                    font-weight="600" fill="#1f2937"
+                  >
+                    {{ studentAtSeat.get(seat.id)?.name ?? '' }}
+                  </text>
+                  <text v-if="lockedSeats.has(seat.id)" :x="cx - 13" :y="cy - 8" font-size="9">🔒</text>
+                  <circle v-if="conflictSeatIds.has(seat.id)" :cx="cx + 13" :cy="cy - 12" r="4.5" fill="#f59e0b" class="no-print-svg" />
+                  <!-- 加減分徽章 -->
+                  <g v-if="pointsMode && studentAtSeat.get(seat.id)" class="no-print-svg">
+                    <circle
+                      :cx="cx + 12" :cy="cy + 12" r="8"
+                      :fill="(studentAtSeat.get(seat.id).points || 0) > 0 ? '#16a34a' : (studentAtSeat.get(seat.id).points || 0) < 0 ? '#dc2626' : '#94a3b8'"
+                    />
+                    <text :x="cx + 12" :y="cy + 15" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff">
+                      {{ studentAtSeat.get(seat.id).points || 0 }}
+                    </text>
+                  </g>
+                  <text
+                    v-if="ptFlash && ptFlash.seatId === seat.id"
+                    :key="ptFlash.n"
+                    class="pt-anim no-print-svg"
+                    :x="cx + 12" :y="cy - 2" text-anchor="middle"
+                    font-size="12" font-weight="700"
+                    :fill="ptFlash.delta > 0 ? '#16a34a' : '#dc2626'"
+                  >{{ ptFlash.delta > 0 ? '+1' : '−1' }}</text>
+                </template>
+              </SeatCanvas>
+            </div>
+          </div>
         </div>
 
         <div v-if="evaluation.violations.length" class="conflicts panel no-print">
@@ -400,9 +489,27 @@ const today = new Date().toLocaleDateString('zh-TW')
 .phase-sel { font-size: 12.5px; padding: 3px 6px; }
 .rule-main .desc { font-size: 12px; }
 .rule-row .w { text-align: right; font-size: 13px; color: var(--text-dim); }
+.zoom-group { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+.zoom-label { font-size: 12.5px; min-width: 40px; text-align: center; }
+.canvas-scroll { overflow-x: auto; }
+.canvas-zoom { min-width: 100%; }
+.pts-hint { background: #fefce8; color: #854d0e; border-radius: 8px; padding: 8px 14px; margin: 0 0 12px; font-size: 13.5px; }
+.batch button.pts-on { background: #fbbf24; border-color: #f59e0b; color: #78350f; font-weight: 600; }
+.pt-btn { min-width: 48px; font-weight: 700; }
+.pt-btn.plus-on { background: #dcfce7; border-color: #16a34a; color: #15803d; }
+.pt-btn.minus-on { background: #fee2e2; border-color: #dc2626; color: #b91c1c; }
+.pt-anim { animation: pt-rise 0.8s ease-out forwards; }
+@keyframes pt-rise {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-12px); }
+}
 @media print {
+  /* 一頁印完一個班：畫布限制在 A4 橫式可用高度內、關閉縮放與換頁 */
   .workspace { display: block; }
-  .board { border: none; box-shadow: none; padding: 0; }
+  .board { border: none; box-shadow: none; padding: 0; page-break-inside: avoid; }
+  .canvas-scroll { overflow: visible; }
+  .canvas-zoom { width: 100% !important; }
+  .board :deep(.seat-canvas) { max-height: 158mm; width: auto; max-width: 100%; margin: 0 auto; display: block; }
   .no-print-svg { display: none; }
 }
 @media (max-width: 800px) { .workspace { grid-template-columns: 1fr; } .side { position: static; } }

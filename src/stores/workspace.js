@@ -96,6 +96,19 @@ export const useWorkspaceStore = defineStore('workspace', {
       else stu.traits.push(traitId)
       this.touch(cls)
     },
+    addPoints(classId, studentId, delta) {
+      const cls = this.classById(classId)
+      const stu = cls?.students.find((s) => s.id === studentId)
+      if (!stu) return
+      stu.points = (stu.points || 0) + delta
+      this.touch(cls)
+    },
+    resetPoints(classId) {
+      const cls = this.classById(classId)
+      if (!cls) return
+      for (const s of cls.students) s.points = 0
+      this.touch(cls)
+    },
     addCustomTrait(classId, label) {
       const cls = this.classById(classId)
       if (!cls || !label.trim()) return null

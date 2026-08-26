@@ -138,8 +138,8 @@ function notchTransform(seat) {
     <!-- 座位 -->
     <g v-for="s in layout.seats" :key="s.id" :opacity="s.enabled ? 1 : 0.3">
       <rect
-        :x="s.col * C + 4" :y="s.row * C + 4"
-        :width="C - 8" :height="C - 8" rx="9"
+        :x="s.col * C + 3" :y="s.row * C + 3"
+        :width="C - 6" :height="C - 6" rx="9"
         :fill="seatFill(s)"
         :stroke="selectedSet.has(s.id) ? '#2563eb' : '#b6c2d0'"
         :stroke-width="selectedSet.has(s.id) ? 3 : 1.5"
