@@ -188,6 +188,27 @@ function zoomBy(step) {
   zoom.value = Math.round(Math.min(2, Math.max(1, zoom.value + step)) * 100) / 100
 }
 
+/* ---------- 座位尺寸（即時預覽、隨座位表儲存） ---------- */
+const showSizePanel = ref(false)
+const cellW = computed({
+  get: () => plan.value.cellW ?? 80,
+  set: (v) => {
+    plan.value.cellW = v
+    store.touchPlan(plan.value)
+  },
+})
+const cellH = computed({
+  get: () => plan.value.cellH ?? 46,
+  set: (v) => {
+    plan.value.cellH = v
+    store.touchPlan(plan.value)
+  },
+})
+function resetCellSize() {
+  cellW.value = 80
+  cellH.value = 46
+}
+
 /* ---------- 加減分模式 ---------- */
 const pointsMode = computed({
   get: () => !!plan.value.pointsMode,
@@ -208,10 +229,13 @@ function resetPoints() {
     store.resetPoints(cls.value.id)
   }
 }
-/** 座位姓名字級：名字越長字越小，避免超出座位格（寬桌 80px 可容更大字） */
+/** 字級隨座位尺寸縮放（以預設 80×46 為基準） */
+const sizeScale = computed(() => Math.min(cellW.value / 80, cellH.value / 46))
+/** 座位姓名字級：名字越長字越小，避免超出座位格 */
 function nameFontSize(name) {
   const len = (name || '').length
-  return len >= 5 ? 12 : len === 4 ? 14 : 16.5
+  const base = len >= 5 ? 12 : len === 4 ? 14 : 16.5
+  return Math.max(8, base * sizeScale.value)
 }
 
 /* ---------- 匯出 ---------- */
@@ -261,6 +285,7 @@ const today = new Date().toLocaleDateString('zh-TW')
           <button :disabled="zoom <= 1" title="縮小" @click="zoomBy(-0.25)">🔍−</button>
           <span class="dim zoom-label">{{ Math.round(zoom * 100) }}%</span>
           <button :disabled="zoom >= 2" title="放大" @click="zoomBy(0.25)">🔍＋</button>
+          <button :class="{ active: showSizePanel }" title="自訂座位格的寬高" @click="showSizePanel = !showSizePanel">📐 尺寸</button>
         </span>
       </div>
       <div class="batch">
@@ -287,6 +312,21 @@ const today = new Date().toLocaleDateString('zh-TW')
         <button v-if="!pointsMode" @click="exportXlsx">📊 Excel</button>
       </div>
     </div>
+    <div v-if="showSizePanel" class="size-panel panel no-print">
+      <label>
+        座位寬
+        <input type="range" min="48" max="140" step="4" v-model.number="cellW" />
+        <span class="val">{{ cellW }}</span>
+      </label>
+      <label>
+        座位高
+        <input type="range" min="32" max="100" step="2" v-model.number="cellH" />
+        <span class="val">{{ cellH }}</span>
+      </label>
+      <button class="mini" @click="resetCellSize">恢復預設（80×46）</button>
+      <span class="dim" style="font-size: 12.5px">拉滑桿即時預覽，設定會跟著這張座位表儲存，列印也用同樣比例。</span>
+    </div>
+
     <p v-if="pointsMode" class="pts-hint no-print">
       ⭐ 加減分模式：點座位上的學生就{{ pointDelta === 1 ? '加' : '扣' }} 1 分（右下角徽章是目前分數）。編排功能已暫停，再按一次「⭐ 加減分」關閉。
     </p>
@@ -310,18 +350,18 @@ const today = new Date().toLocaleDateString('zh-TW')
                 :layout="viewLayout"
                 :selected="selection?.fromSeatId ? [selection.fromSeatId] : []"
                 mode="seating"
-                :cell-w="80"
-                :cell-h="46"
+                :cell-w="cellW"
+                :cell-h="cellH"
                 :show-grid="false"
                 @select="onSeatClick"
                 @clear-select="onClearSelect"
               >
                 <template #seat-label="{ seat, cx, cy, w, h }">
-                  <text :x="cx" :y="cy - 7" text-anchor="middle" font-size="9.5" fill="#64748b">
+                  <text :x="cx" :y="cy - 7 * (h / 46)" text-anchor="middle" :font-size="Math.max(7, 9.5 * sizeScale)" fill="#64748b">
                     {{ studentAtSeat.get(seat.id)?.seatNo ?? '' }}
                   </text>
                   <text
-                    :x="cx" :y="cy + 11" text-anchor="middle"
+                    :x="cx" :y="cy + 11 * (h / 46)" text-anchor="middle"
                     :font-size="nameFontSize(studentAtSeat.get(seat.id)?.name)"
                     font-weight="600" fill="#1f2937"
                   >
@@ -493,6 +533,12 @@ const today = new Date().toLocaleDateString('zh-TW')
 .rule-main .desc { font-size: 12px; }
 .rule-row .w { text-align: right; font-size: 13px; color: var(--text-dim); }
 .zoom-group { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+.zoom-group button.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.size-panel { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 10px 16px; margin-bottom: 12px; }
+.size-panel label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.size-panel input[type='range'] { width: 140px; }
+.size-panel .val { min-width: 30px; font-weight: 600; text-align: right; }
+.size-panel .mini { font-size: 12px; padding: 3px 10px; }
 .zoom-label { font-size: 12.5px; min-width: 40px; text-align: center; }
 .canvas-scroll { overflow-x: auto; }
 .canvas-zoom { min-width: 100%; }

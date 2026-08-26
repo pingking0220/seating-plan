@@ -22,18 +22,24 @@ const pages = computed(() => {
       const stuById = new Map(cls.students.map((s) => [s.id, s]))
       const atSeat = new Map()
       for (const a of p.assignments) atSeat.set(a.seatId, stuById.get(a.studentId))
+      const cellW = p.cellW ?? 80
+      const cellH = p.cellH ?? 46
       return {
         plan: p,
         cls,
         layout: viewMode.value === 'teacher' ? flipLayout(layout) : layout,
         atSeat,
+        cellW,
+        cellH,
+        scale: Math.min(cellW / 80, cellH / 46),
       }
     })
 })
 
-function nameFontSize(name) {
+function nameFontSize(name, scale = 1) {
   const len = (name || '').length
-  return len >= 5 ? 12 : len === 4 ? 14 : 16.5
+  const base = len >= 5 ? 12 : len === 4 ? 14 : 16.5
+  return Math.max(8, base * scale)
 }
 
 const today = new Date().toLocaleDateString('zh-TW')
@@ -72,14 +78,14 @@ onMounted(() => {
         <p>{{ page.cls.name }}・{{ viewMode === 'teacher' ? '老師視角（前方在下）' : '學生視角（前方在上）' }}・{{ today }}</p>
         <div class="front-label">{{ viewMode === 'teacher' ? '▼ 前方（黑板）在下' : '▲ 前方（黑板）在上' }}</div>
       </div>
-      <SeatCanvas :layout="page.layout" :interactive="false" :cell-w="80" :cell-h="46" :show-grid="false">
-        <template #seat-label="{ seat, cx, cy }">
-          <text :x="cx" :y="cy - 7" text-anchor="middle" font-size="9.5" fill="#64748b">
+      <SeatCanvas :layout="page.layout" :interactive="false" :cell-w="page.cellW" :cell-h="page.cellH" :show-grid="false">
+        <template #seat-label="{ seat, cx, cy, h }">
+          <text :x="cx" :y="cy - 7 * (h / 46)" text-anchor="middle" :font-size="Math.max(7, 9.5 * page.scale)" fill="#64748b">
             {{ page.atSeat.get(seat.id)?.seatNo ?? '' }}
           </text>
           <text
-            :x="cx" :y="cy + 11" text-anchor="middle"
-            :font-size="nameFontSize(page.atSeat.get(seat.id)?.name)"
+            :x="cx" :y="cy + 11 * (h / 46)" text-anchor="middle"
+            :font-size="nameFontSize(page.atSeat.get(seat.id)?.name, page.scale)"
             font-weight="600" fill="#1f2937"
           >
             {{ page.atSeat.get(seat.id)?.name ?? '' }}
