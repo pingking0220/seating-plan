@@ -43,6 +43,7 @@ const showBatch = ref(false)
 const templateId = ref('')
 const batchClassIds = ref([])
 const batchAutoArrange = ref(true)
+const batchOverwrite = ref(true)
 const batchResult = ref('')
 
 const templatePlan = computed(() => store.planById(templateId.value))
@@ -54,6 +55,7 @@ function openBatch(p) {
     .filter((c) => c.students.length && c.id !== store.planById(templateId.value)?.classId)
     .map((c) => c.id)
   batchAutoArrange.value = true
+  batchOverwrite.value = true
   batchResult.value = ''
   showBatch.value = true
 }
@@ -95,34 +97,52 @@ function runBatch() {
   const layout = templateLayout.value
   if (!tpl || !layout) return
   let created = 0
-  let arranged = 0
+  let overwritten = 0
   for (const cid of batchClassIds.value) {
     const cls = store.classById(cid)
     if (!cls || !cls.students.length) continue
-    const plan = createPlan({
-      classId: cid,
-      layoutId: tpl.layoutId,
-      name: `${cls.name}座位表（${layout.name}）`,
-      rules: JSON.parse(JSON.stringify(tpl.rules || defaultRulesConfig())),
-    })
+    const rules = JSON.parse(JSON.stringify(tpl.rules || defaultRulesConfig()))
+    // 覆蓋模式：同班級＋同教室的舊座位表就地更新（保留原名與鎖定座位）
+    const existing = batchOverwrite.value
+      ? store.plans.find((x) => x.classId === cid && x.layoutId === tpl.layoutId && x.id !== tpl.id)
+      : null
+    const target =
+      existing ||
+      createPlan({
+        classId: cid,
+        layoutId: tpl.layoutId,
+        name: `${cls.name}座位表（${layout.name}）`,
+      })
+    target.rules = rules
+    // 版面設定（格子尺寸、字體、縮放）一併複製
+    target.cellW = tpl.cellW ?? 80
+    target.cellH = tpl.cellH ?? 46
+    target.nameFont = tpl.nameFont ?? 17
+    target.zoom = tpl.zoom ?? 1.25
     if (batchAutoArrange.value) {
+      const locked = (existing?.assignments || []).filter((a) => a.locked)
       const res = solve({
         layout,
         students: cls.students,
         relations: cls.relations || [],
-        rulesConfig: plan.rules,
+        rulesConfig: rules,
+        locked,
         prev: store.lastRecordOf(cid),
         seed: 1,
       })
-      plan.assignments = res.assignments
-      plan.seed = 1
-      arranged++
+      target.assignments = [...locked, ...res.assignments]
+      target.seed = 1
     }
-    store.addPlan(plan)
-    created++
+    if (existing) {
+      overwritten++
+      store.touchPlan(existing)
+    } else {
+      store.addPlan(target)
+      created++
+    }
   }
-  batchResult.value = `已建立 ${created} 張座位表${batchAutoArrange.value ? `（${arranged} 張已自動排位）` : ''}`
-  setTimeout(() => { showBatch.value = false }, 1200)
+  batchResult.value = `完成：新建 ${created} 張、覆蓋更新 ${overwritten} 張${batchAutoArrange.value ? '，皆已自動排位' : ''}`
+  setTimeout(() => { showBatch.value = false }, 1500)
 }
 </script>
 
@@ -253,6 +273,10 @@ function runBatch() {
         <label class="field check">
           <input type="checkbox" v-model="batchAutoArrange" />
           建立後立即自動排位（依各班的名單、標籤與人際關係）
+        </label>
+        <label class="field check">
+          <input type="checkbox" v-model="batchOverwrite" />
+          覆蓋同班級＋同教室的舊座位表（保留原名稱與鎖定座位；取消則另外新增一張）
         </label>
 
         <p v-if="batchResult" class="batch-done">✅ {{ batchResult }}</p>
