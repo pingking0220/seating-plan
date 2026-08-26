@@ -2,19 +2,24 @@
 import { computed, ref } from 'vue'
 import { FURNITURE_KINDS, groupColor } from '@/core/model/defaults.js'
 
-const C = 44 // 每格 px（SVG 座標）
 const props = defineProps({
   layout: { type: Object, required: true },
   selected: { type: Array, default: () => [] },
   tool: { type: String, default: 'select' },
   interactive: { type: Boolean, default: true },
   mode: { type: String, default: 'layout' }, // 'layout' | 'seating'
+  cellW: { type: Number, default: 44 }, // 每格寬（px，SVG 座標）
+  cellH: { type: Number, default: 44 }, // 每格高
+  showGrid: { type: Boolean, default: true },
 })
 const emit = defineEmits(['select', 'clear-select', 'add-at', 'erase', 'drag-start', 'drag-delta', 'drag-end'])
 
+const cw = computed(() => props.cellW)
+const ch = computed(() => props.cellH)
+
 const svgEl = ref(null)
-const width = computed(() => props.layout.grid.cols * C)
-const height = computed(() => props.layout.grid.rows * C)
+const width = computed(() => props.layout.grid.cols * cw.value)
+const height = computed(() => props.layout.grid.rows * ch.value)
 const selectedSet = computed(() => new Set(props.selected))
 
 const seatMap = computed(() => {
@@ -94,8 +99,8 @@ function onPointerUp() {
 
 /** 座位朝向缺口：rotation 0=朝上 90=朝右 180=朝下 270=朝左 */
 function notchTransform(seat) {
-  const cx = seat.col * C + C / 2
-  const cy = seat.row * C + C / 2
+  const cx = seat.col * cw.value + cw.value / 2
+  const cy = seat.row * ch.value + ch.value / 2
   return `rotate(${seat.rotation || 0} ${cx} ${cy})`
 }
 </script>
@@ -113,23 +118,23 @@ function notchTransform(seat) {
   >
     <!-- 底 + 格線 -->
     <rect :width="width" :height="height" fill="#fbfcfe" />
-    <g stroke="#eef1f5" stroke-width="1">
-      <line v-for="c in layout.grid.cols - 1" :key="'v' + c" :x1="c * C" y1="0" :x2="c * C" :y2="height" />
-      <line v-for="r in layout.grid.rows - 1" :key="'h' + r" x1="0" :y1="r * C" :x2="width" :y2="r * C" />
+    <g v-if="showGrid" stroke="#eef1f5" stroke-width="1">
+      <line v-for="c in layout.grid.cols - 1" :key="'v' + c" :x1="c * cw" y1="0" :x2="c * cw" :y2="height" />
+      <line v-for="r in layout.grid.rows - 1" :key="'h' + r" x1="0" :y1="r * ch" :x2="width" :y2="r * ch" />
     </g>
 
     <!-- 家具 -->
     <g v-for="f in layout.furniture" :key="f.id">
       <rect
-        :x="f.col * C + 2" :y="f.row * C + 2"
-        :width="f.w * C - 4" :height="f.h * C - 4"
+        :x="f.col * cw + 2" :y="f.row * ch + 2"
+        :width="f.w * cw - 4" :height="f.h * ch - 4"
         rx="6"
         :fill="f.kind === 'board' ? '#334155' : '#e2e8f0'"
         :stroke="selectedSet.has(f.id) ? '#2563eb' : '#cbd5e1'"
         :stroke-width="selectedSet.has(f.id) ? 3 : 1"
       />
       <text
-        :x="f.col * C + (f.w * C) / 2" :y="f.row * C + (f.h * C) / 2 + 5"
+        :x="f.col * cw + (f.w * cw) / 2" :y="f.row * ch + (f.h * ch) / 2 + 5"
         text-anchor="middle" :font-size="14"
         :fill="f.kind === 'board' ? '#fff' : '#475569'"
       >{{ kindDef(f.kind).emoji }} {{ kindDef(f.kind).label }}</text>
@@ -138,22 +143,22 @@ function notchTransform(seat) {
     <!-- 座位 -->
     <g v-for="s in layout.seats" :key="s.id" :opacity="s.enabled ? 1 : 0.3">
       <rect
-        :x="s.col * C + 3" :y="s.row * C + 3"
-        :width="C - 6" :height="C - 6" rx="9"
+        :x="s.col * cw + 3" :y="s.row * ch + 3"
+        :width="cw - 6" :height="ch - 6" rx="8"
         :fill="seatFill(s)"
         :stroke="selectedSet.has(s.id) ? '#2563eb' : '#b6c2d0'"
         :stroke-width="selectedSet.has(s.id) ? 3 : 1.5"
       />
       <!-- 朝向缺口 -->
       <rect
-        :x="s.col * C + C / 2 - 7" :y="s.row * C + 2" width="14" height="5" rx="2.5"
+        :x="s.col * cw + cw / 2 - 7" :y="s.row * ch + 2" width="14" height="5" rx="2.5"
         fill="#7c8b9d" :transform="notchTransform(s)"
       />
-      <text v-if="!s.enabled" :x="s.col * C + C / 2" :y="s.row * C + C / 2 + 6" text-anchor="middle" font-size="17" fill="#94a3b8">✕</text>
-      <text v-if="s.tags.length" :x="s.col * C + C - 10" :y="s.row * C + C - 8" text-anchor="middle" font-size="11">
+      <text v-if="!s.enabled" :x="s.col * cw + cw / 2" :y="s.row * ch + ch / 2 + 6" text-anchor="middle" font-size="17" fill="#94a3b8">✕</text>
+      <text v-if="s.tags.length" :x="s.col * cw + cw - 10" :y="s.row * ch + ch - 8" text-anchor="middle" font-size="11">
         {{ s.tags.includes('accessible') ? '♿' : s.tags.includes('fixed_pc') ? '💻' : '🧪' }}
       </text>
-      <slot name="seat-label" :seat="s" :cx="s.col * C + C / 2" :cy="s.row * C + C / 2" />
+      <slot name="seat-label" :seat="s" :cx="s.col * cw + cw / 2" :cy="s.row * ch + ch / 2" :w="cw" :h="ch" />
     </g>
   </svg>
 </template>

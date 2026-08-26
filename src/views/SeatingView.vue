@@ -208,10 +208,10 @@ function resetPoints() {
     store.resetPoints(cls.value.id)
   }
 }
-/** 座位姓名字級：名字越長字越小，避免超出座位格 */
+/** 座位姓名字級：名字越長字越小，避免超出座位格（寬桌 80px 可容更大字） */
 function nameFontSize(name) {
   const len = (name || '').length
-  return len >= 5 ? 9 : len === 4 ? 10.5 : 13.5
+  return len >= 5 ? 12 : len === 4 ? 14 : 16.5
 }
 
 /* ---------- 匯出 ---------- */
@@ -310,29 +310,32 @@ const today = new Date().toLocaleDateString('zh-TW')
                 :layout="viewLayout"
                 :selected="selection?.fromSeatId ? [selection.fromSeatId] : []"
                 mode="seating"
+                :cell-w="80"
+                :cell-h="46"
+                :show-grid="false"
                 @select="onSeatClick"
                 @clear-select="onClearSelect"
               >
-                <template #seat-label="{ seat, cx, cy }">
-                  <text :x="cx" :y="cy - 6" text-anchor="middle" font-size="9.5" fill="#64748b">
+                <template #seat-label="{ seat, cx, cy, w, h }">
+                  <text :x="cx" :y="cy - 7" text-anchor="middle" font-size="9.5" fill="#64748b">
                     {{ studentAtSeat.get(seat.id)?.seatNo ?? '' }}
                   </text>
                   <text
-                    :x="cx" :y="cy + 10" text-anchor="middle"
+                    :x="cx" :y="cy + 11" text-anchor="middle"
                     :font-size="nameFontSize(studentAtSeat.get(seat.id)?.name)"
                     font-weight="600" fill="#1f2937"
                   >
                     {{ studentAtSeat.get(seat.id)?.name ?? '' }}
                   </text>
-                  <text v-if="lockedSeats.has(seat.id)" :x="cx - 13" :y="cy - 8" font-size="9">🔒</text>
-                  <circle v-if="conflictSeatIds.has(seat.id)" :cx="cx + 13" :cy="cy - 12" r="4.5" fill="#f59e0b" class="no-print-svg" />
+                  <text v-if="lockedSeats.has(seat.id)" :x="cx - w / 2 + 8" :y="cy - h / 2 + 15" font-size="10">🔒</text>
+                  <circle v-if="conflictSeatIds.has(seat.id)" :cx="cx + w / 2 - 10" :cy="cy - h / 2 + 10" r="4.5" fill="#f59e0b" class="no-print-svg" />
                   <!-- 加減分徽章 -->
                   <g v-if="pointsMode && studentAtSeat.get(seat.id)" class="no-print-svg">
                     <circle
-                      :cx="cx + 12" :cy="cy + 12" r="8"
+                      :cx="cx + w / 2 - 12" :cy="cy + h / 2 - 12" r="8.5"
                       :fill="(studentAtSeat.get(seat.id).points || 0) > 0 ? '#16a34a' : (studentAtSeat.get(seat.id).points || 0) < 0 ? '#dc2626' : '#94a3b8'"
                     />
-                    <text :x="cx + 12" :y="cy + 15" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff">
+                    <text :x="cx + w / 2 - 12" :y="cy + h / 2 - 9" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">
                       {{ studentAtSeat.get(seat.id).points || 0 }}
                     </text>
                   </g>
@@ -340,8 +343,8 @@ const today = new Date().toLocaleDateString('zh-TW')
                     v-if="ptFlash && ptFlash.seatId === seat.id"
                     :key="ptFlash.n"
                     class="pt-anim no-print-svg"
-                    :x="cx + 12" :y="cy - 2" text-anchor="middle"
-                    font-size="12" font-weight="700"
+                    :x="cx + w / 2 - 12" :y="cy - 4" text-anchor="middle"
+                    font-size="13" font-weight="700"
                     :fill="ptFlash.delta > 0 ? '#16a34a' : '#dc2626'"
                   >{{ ptFlash.delta > 0 ? '+1' : '−1' }}</text>
                 </template>

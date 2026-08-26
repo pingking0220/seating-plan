@@ -33,7 +33,7 @@ const pages = computed(() => {
 
 function nameFontSize(name) {
   const len = (name || '').length
-  return len >= 5 ? 9 : len === 4 ? 10.5 : 13.5
+  return len >= 5 ? 12 : len === 4 ? 14 : 16.5
 }
 
 const today = new Date().toLocaleDateString('zh-TW')
@@ -72,13 +72,13 @@ onMounted(() => {
         <p>{{ page.cls.name }}・{{ viewMode === 'teacher' ? '老師視角（前方在下）' : '學生視角（前方在上）' }}・{{ today }}</p>
         <div class="front-label">{{ viewMode === 'teacher' ? '▼ 前方（黑板）在下' : '▲ 前方（黑板）在上' }}</div>
       </div>
-      <SeatCanvas :layout="page.layout" :interactive="false">
+      <SeatCanvas :layout="page.layout" :interactive="false" :cell-w="80" :cell-h="46" :show-grid="false">
         <template #seat-label="{ seat, cx, cy }">
-          <text :x="cx" :y="cy - 6" text-anchor="middle" font-size="9.5" fill="#64748b">
+          <text :x="cx" :y="cy - 7" text-anchor="middle" font-size="9.5" fill="#64748b">
             {{ page.atSeat.get(seat.id)?.seatNo ?? '' }}
           </text>
           <text
-            :x="cx" :y="cy + 10" text-anchor="middle"
+            :x="cx" :y="cy + 11" text-anchor="middle"
             :font-size="nameFontSize(page.atSeat.get(seat.id)?.name)"
             font-weight="600" fill="#1f2937"
           >
