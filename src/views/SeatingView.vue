@@ -216,8 +216,15 @@ function resetCellSize() {
   cellH.value = 46
   nameFont.value = 17
 }
-/** 畫布以真實像素呈現：座位寬 80 就是螢幕上 80px × 縮放倍率（超出時左右捲動） */
-const canvasPixelWidth = computed(() => Math.round(viewLayout.value.grid.cols * cellW.value * zoom.value))
+/** 畫布以真實像素呈現：座位寬 80 就是螢幕上 80px × 縮放倍率（超出時左右捲動）。
+ *  走道（無座位的行）固定 28px，不隨座位尺寸縮放。 */
+const AISLE_W = 28
+const canvasPixelWidth = computed(() => {
+  const cols = new Set(viewLayout.value.seats.map((s) => s.col))
+  let w = 0
+  for (let c = 0; c < viewLayout.value.grid.cols; c++) w += cols.has(c) ? cellW.value : AISLE_W
+  return Math.round(w * zoom.value)
+})
 
 /* ---------- 加減分模式 ---------- */
 const pointsMode = computed({
@@ -367,6 +374,7 @@ const today = new Date().toLocaleDateString('zh-TW')
                 :cell-w="cellW"
                 :cell-h="cellH"
                 :show-grid="false"
+                compact
                 @select="onSeatClick"
                 @clear-select="onClearSelect"
               >

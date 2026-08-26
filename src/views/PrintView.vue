@@ -80,7 +80,7 @@ onMounted(() => {
         <p>{{ page.cls.name }}・{{ viewMode === 'teacher' ? '老師視角（前方在下）' : '學生視角（前方在上）' }}・{{ today }}</p>
         <div class="front-label">{{ viewMode === 'teacher' ? '▼ 前方（黑板）在下' : '▲ 前方（黑板）在上' }}</div>
       </div>
-      <SeatCanvas :layout="page.layout" :interactive="false" :cell-w="page.cellW" :cell-h="page.cellH" :show-grid="false">
+      <SeatCanvas :layout="page.layout" :interactive="false" :cell-w="page.cellW" :cell-h="page.cellH" :show-grid="false" compact>
         <template #seat-label="{ seat, cx, cy }">
           <text :x="cx" :y="cy - page.nameFont * 0.45" text-anchor="middle" :font-size="page.seatNoFont" fill="#64748b">
             {{ page.atSeat.get(seat.id)?.seatNo ?? '' }}

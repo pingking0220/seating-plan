@@ -8,18 +8,43 @@ const props = defineProps({
   tool: { type: String, default: 'select' },
   interactive: { type: Boolean, default: true },
   mode: { type: String, default: 'layout' }, // 'layout' | 'seating'
-  cellW: { type: Number, default: 44 }, // 每格寬（px，SVG 座標）
-  cellH: { type: Number, default: 44 }, // 每格高
+  cellW: { type: Number, default: 44 }, // 座位格寬（px，SVG 座標）
+  cellH: { type: Number, default: 44 }, // 座位格高
   showGrid: { type: Boolean, default: true },
+  // compact：走道（沒有座位的行/列）用固定尺寸，不隨座位大小縮放
+  compact: { type: Boolean, default: false },
+  aisleW: { type: Number, default: 28 },
+  aisleH: { type: Number, default: 26 },
 })
 const emit = defineEmits(['select', 'clear-select', 'add-at', 'erase', 'drag-start', 'drag-delta', 'drag-end'])
 
 const cw = computed(() => props.cellW)
 const ch = computed(() => props.cellH)
 
+const seatCols = computed(() => new Set(props.layout.seats.map((s) => s.col)))
+const seatRows = computed(() => new Set(props.layout.seats.map((s) => s.row)))
+
+/** 每一行/列的起始座標（前綴和）— compact 時走道行列用固定尺寸 */
+const colX = computed(() => {
+  const arr = [0]
+  for (let c = 0; c < props.layout.grid.cols; c++) {
+    const w = !props.compact || seatCols.value.has(c) ? cw.value : props.aisleW
+    arr.push(arr[c] + w)
+  }
+  return arr
+})
+const rowY = computed(() => {
+  const arr = [0]
+  for (let r = 0; r < props.layout.grid.rows; r++) {
+    const h = !props.compact || seatRows.value.has(r) ? ch.value : props.aisleH
+    arr.push(arr[r] + h)
+  }
+  return arr
+})
+
 const svgEl = ref(null)
-const width = computed(() => props.layout.grid.cols * cw.value)
-const height = computed(() => props.layout.grid.rows * ch.value)
+const width = computed(() => colX.value[props.layout.grid.cols])
+const height = computed(() => rowY.value[props.layout.grid.rows])
 const selectedSet = computed(() => new Set(props.selected))
 
 const seatMap = computed(() => {
@@ -38,17 +63,34 @@ function kindDef(kind) {
 function seatFill(seat) {
   return groupColor(seat.groupId, props.layout) || '#e8eef5'
 }
+function furnX(f) {
+  return colX.value[f.col]
+}
+function furnW(f) {
+  return colX.value[Math.min(f.col + f.w, props.layout.grid.cols)] - colX.value[f.col]
+}
+function furnY(f) {
+  return rowY.value[f.row]
+}
+function furnH(f) {
+  return rowY.value[Math.min(f.row + f.h, props.layout.grid.rows)] - rowY.value[f.row]
+}
 
 /* ---------- 指標事件 ---------- */
 let drag = null
 function cellOf(e) {
   const rect = svgEl.value.getBoundingClientRect()
-  const col = Math.floor(((e.clientX - rect.left) / rect.width) * props.layout.grid.cols)
-  const row = Math.floor(((e.clientY - rect.top) / rect.height) * props.layout.grid.rows)
-  return {
-    col: Math.max(0, Math.min(props.layout.grid.cols - 1, col)),
-    row: Math.max(0, Math.min(props.layout.grid.rows - 1, row)),
+  const sx = ((e.clientX - rect.left) / rect.width) * width.value
+  const sy = ((e.clientY - rect.top) / rect.height) * height.value
+  let col = props.layout.grid.cols - 1
+  for (let c = 0; c < props.layout.grid.cols; c++) {
+    if (sx < colX.value[c + 1]) { col = c; break }
   }
+  let row = props.layout.grid.rows - 1
+  for (let r = 0; r < props.layout.grid.rows; r++) {
+    if (sy < rowY.value[r + 1]) { row = r; break }
+  }
+  return { col: Math.max(0, col), row: Math.max(0, row) }
 }
 function onPointerDown(e) {
   if (!props.interactive) return
@@ -99,8 +141,8 @@ function onPointerUp() {
 
 /** 座位朝向缺口：rotation 0=朝上 90=朝右 180=朝下 270=朝左 */
 function notchTransform(seat) {
-  const cx = seat.col * cw.value + cw.value / 2
-  const cy = seat.row * ch.value + ch.value / 2
+  const cx = colX.value[seat.col] + cw.value / 2
+  const cy = rowY.value[seat.row] + ch.value / 2
   return `rotate(${seat.rotation || 0} ${cx} ${cy})`
 }
 </script>
@@ -119,22 +161,22 @@ function notchTransform(seat) {
     <!-- 底 + 格線 -->
     <rect :width="width" :height="height" fill="#fbfcfe" />
     <g v-if="showGrid" stroke="#eef1f5" stroke-width="1">
-      <line v-for="c in layout.grid.cols - 1" :key="'v' + c" :x1="c * cw" y1="0" :x2="c * cw" :y2="height" />
-      <line v-for="r in layout.grid.rows - 1" :key="'h' + r" x1="0" :y1="r * ch" :x2="width" :y2="r * ch" />
+      <line v-for="c in layout.grid.cols - 1" :key="'v' + c" :x1="colX[c]" y1="0" :x2="colX[c]" :y2="height" />
+      <line v-for="r in layout.grid.rows - 1" :key="'h' + r" x1="0" :y1="rowY[r]" :x2="width" :y2="rowY[r]" />
     </g>
 
     <!-- 家具 -->
     <g v-for="f in layout.furniture" :key="f.id">
       <rect
-        :x="f.col * cw + 2" :y="f.row * ch + 2"
-        :width="f.w * cw - 4" :height="f.h * ch - 4"
+        :x="furnX(f) + 2" :y="furnY(f) + 2"
+        :width="furnW(f) - 4" :height="furnH(f) - 4"
         rx="6"
         :fill="f.kind === 'board' ? '#334155' : '#e2e8f0'"
         :stroke="selectedSet.has(f.id) ? '#2563eb' : '#cbd5e1'"
         :stroke-width="selectedSet.has(f.id) ? 3 : 1"
       />
       <text
-        :x="f.col * cw + (f.w * cw) / 2" :y="f.row * ch + (f.h * ch) / 2 + 5"
+        :x="furnX(f) + furnW(f) / 2" :y="furnY(f) + furnH(f) / 2 + 5"
         text-anchor="middle" :font-size="14"
         :fill="f.kind === 'board' ? '#fff' : '#475569'"
       >{{ kindDef(f.kind).emoji }} {{ kindDef(f.kind).label }}</text>
@@ -143,7 +185,7 @@ function notchTransform(seat) {
     <!-- 座位 -->
     <g v-for="s in layout.seats" :key="s.id" :opacity="s.enabled ? 1 : 0.3">
       <rect
-        :x="s.col * cw + 3" :y="s.row * ch + 3"
+        :x="colX[s.col] + 3" :y="rowY[s.row] + 3"
         :width="cw - 6" :height="ch - 6" rx="8"
         :fill="seatFill(s)"
         :stroke="selectedSet.has(s.id) ? '#2563eb' : '#b6c2d0'"
@@ -151,14 +193,14 @@ function notchTransform(seat) {
       />
       <!-- 朝向缺口 -->
       <rect
-        :x="s.col * cw + cw / 2 - 7" :y="s.row * ch + 2" width="14" height="5" rx="2.5"
+        :x="colX[s.col] + cw / 2 - 7" :y="rowY[s.row] + 2" width="14" height="5" rx="2.5"
         fill="#7c8b9d" :transform="notchTransform(s)"
       />
-      <text v-if="!s.enabled" :x="s.col * cw + cw / 2" :y="s.row * ch + ch / 2 + 6" text-anchor="middle" font-size="17" fill="#94a3b8">✕</text>
-      <text v-if="s.tags.length" :x="s.col * cw + cw - 10" :y="s.row * ch + ch - 8" text-anchor="middle" font-size="11">
+      <text v-if="!s.enabled" :x="colX[s.col] + cw / 2" :y="rowY[s.row] + ch / 2 + 6" text-anchor="middle" font-size="17" fill="#94a3b8">✕</text>
+      <text v-if="s.tags.length" :x="colX[s.col] + cw - 10" :y="rowY[s.row] + ch - 8" text-anchor="middle" font-size="11">
         {{ s.tags.includes('accessible') ? '♿' : s.tags.includes('fixed_pc') ? '💻' : '🧪' }}
       </text>
-      <slot name="seat-label" :seat="s" :cx="s.col * cw + cw / 2" :cy="s.row * ch + ch / 2" :w="cw" :h="ch" />
+      <slot name="seat-label" :seat="s" :cx="colX[s.col] + cw / 2" :cy="rowY[s.row] + ch / 2" :w="cw" :h="ch" />
     </g>
   </svg>
 </template>
