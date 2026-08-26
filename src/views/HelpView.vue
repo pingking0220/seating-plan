@@ -136,6 +136,7 @@ const sections = [
         <li><strong>🖨️ 列印</strong>：A4 橫式一頁印完一個班（座位表自動縮放到單頁內），含班名、視角、日期，可直接「另存為 PDF」。畫面上的縮放、加減分徽章、警示橘點都不會印出來。</li>
         <li><strong>🖼️ PNG</strong>：高解析圖片，貼班群、傳 LINE。</li>
         <li><strong>📊 Excel</strong>：座位表以格子排進工作表，要再加工也行。</li>
+        <li><strong>🖨️ 批次列印</strong>：座位表列表的「批次列印」— 勾選多張座位表、選視角，一次送印、自動每班一頁。開學前把全學年 10 個班一次印完。</li>
       </ul>
     </section>
 

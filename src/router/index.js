@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/plans', name: 'plans', component: () => import('@/views/PlansView.vue') },
     { path: '/plan/:id', name: 'seating', component: () => import('@/views/SeatingView.vue') },
     { path: '/help', name: 'help', component: () => import('@/views/HelpView.vue') },
+    { path: '/print-batch', name: 'print-batch', component: () => import('@/views/PrintView.vue') },
   ],
 })
 

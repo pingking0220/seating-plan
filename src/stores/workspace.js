@@ -8,6 +8,7 @@ export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     loaded: false,
     ws: createWorkspace(),
+    batchPrint: null, // { planIds, viewMode } 批次列印暫存（不持久化）
   }),
   getters: {
     classes: (s) => s.ws.classes,

@@ -67,6 +67,29 @@ function onTemplateChange() {
   const tplCls = templatePlan.value?.classId
   batchClassIds.value = store.classes.filter((c) => c.students.length && c.id !== tplCls).map((c) => c.id)
 }
+/* ---------- 批次列印 ---------- */
+const showPrint = ref(false)
+const printPlanIds = ref([])
+const printViewMode = ref('student')
+
+function openPrint() {
+  printPlanIds.value = store.plans
+    .filter((p) => store.classById(p.classId) && store.layoutById(p.layoutId) && p.assignments.length)
+    .map((p) => p.id)
+  printViewMode.value = 'student'
+  showPrint.value = true
+}
+function togglePrintPlan(id) {
+  const i = printPlanIds.value.indexOf(id)
+  if (i >= 0) printPlanIds.value.splice(i, 1)
+  else printPlanIds.value.push(id)
+}
+function startPrint() {
+  store.batchPrint = { planIds: printPlanIds.value.slice(), viewMode: printViewMode.value }
+  showPrint.value = false
+  router.push({ name: 'print-batch' })
+}
+
 function runBatch() {
   const tpl = templatePlan.value
   const layout = templateLayout.value
@@ -109,6 +132,7 @@ function runBatch() {
       <h2>座位表</h2>
       <div class="head-actions">
         <button v-if="store.plans.length" @click="openBatch(null)">📑 批次建立</button>
+        <button v-if="store.plans.length" @click="openPrint()">🖨️ 批次列印</button>
         <form v-if="ready" class="create" @submit.prevent="create">
           <select v-model="classId">
             <option value="" disabled>選班級</option>
@@ -143,6 +167,48 @@ function runBatch() {
           <RouterLink :to="{ name: 'seating', params: { id: p.id } }"><button>編排</button></RouterLink>
           <button @click="openBatch(p)" title="用這張的規則與教室，批次建立其他班級的座位表">套用到其他班</button>
           <button class="danger-ghost" @click="remove(p)">刪除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 批次列印 -->
+    <div v-if="showPrint" class="modal-mask" @click.self="showPrint = false">
+      <div class="modal batch-modal">
+        <h3>🖨️ 批次列印</h3>
+        <p class="dim">勾選要列印的座位表，一次送印、每班一頁（A4 橫式）。</p>
+
+        <div class="field">
+          <div class="cls-head">
+            要列印的座位表（{{ printPlanIds.length }} 張）
+            <button class="mini" @click="printPlanIds = store.plans.filter((p) => p.assignments.length).map((p) => p.id)">全選</button>
+            <button class="mini" @click="printPlanIds = []">全不選</button>
+          </div>
+          <div class="cls-grid">
+            <label v-for="p in store.plans" :key="p.id" class="cls-opt" :class="{ off: !p.assignments.length }">
+              <input
+                type="checkbox"
+                :checked="printPlanIds.includes(p.id)"
+                :disabled="!p.assignments.length"
+                @change="togglePrintPlan(p.id)"
+              />
+              {{ p.name }}<span class="dim">（{{ p.assignments.length }}人）</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          視角
+          <div class="view-radio">
+            <label><input type="radio" v-model="printViewMode" value="student" /> 🧑‍🎓 學生視角（前方在上）</label>
+            <label><input type="radio" v-model="printViewMode" value="teacher" /> 🧑‍🏫 老師視角（前方在下）</label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button @click="showPrint = false">取消</button>
+          <button class="primary" :disabled="!printPlanIds.length" @click="startPrint">
+            列印 {{ printPlanIds.length }} 張（每班一頁）
+          </button>
         </div>
       </div>
     </div>
@@ -224,5 +290,7 @@ function runBatch() {
 .cls-opt { display: flex; align-items: center; gap: 6px; font-size: 13.5px; padding: 3px 0; }
 .cls-opt.off { opacity: 0.45; }
 .batch-done { color: #15803d; margin: 12px 0 0; }
+.view-radio { display: flex; gap: 18px; flex-wrap: wrap; }
+.view-radio label { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 </style>

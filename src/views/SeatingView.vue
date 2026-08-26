@@ -504,12 +504,13 @@ const today = new Date().toLocaleDateString('zh-TW')
   to { opacity: 0; transform: translateY(-12px); }
 }
 @media print {
-  /* 一頁印完一個班：畫布限制在 A4 橫式可用高度內、關閉縮放與換頁 */
+  /* 一頁印完一個班：畫布給定固定高度、等比縮放進 A4 橫式單頁 */
   .workspace { display: block; }
-  .board { border: none; box-shadow: none; padding: 0; page-break-inside: avoid; }
+  .board { border: none; box-shadow: none; padding: 0; page-break-inside: avoid; page-break-after: avoid; }
   .canvas-scroll { overflow: visible; }
   .canvas-zoom { width: 100% !important; }
-  .board :deep(.seat-canvas) { max-height: 158mm; width: auto; max-width: 100%; margin: 0 auto; display: block; }
+  .board :deep(.seat-canvas) { height: 150mm; width: 100%; margin: 0 auto; display: block; }
+  .conflicts { display: none; }
   .no-print-svg { display: none; }
 }
 @media (max-width: 800px) { .workspace { grid-template-columns: 1fr; } .side { position: static; } }
