@@ -204,10 +204,20 @@ const cellH = computed({
     store.touchPlan(plan.value)
   },
 })
+const nameFont = computed({
+  get: () => plan.value.nameFont ?? 17,
+  set: (v) => {
+    plan.value.nameFont = v
+    store.touchPlan(plan.value)
+  },
+})
 function resetCellSize() {
   cellW.value = 80
   cellH.value = 46
+  nameFont.value = 17
 }
+/** 畫布以真實像素呈現：座位寬 80 就是螢幕上 80px × 縮放倍率（超出時左右捲動） */
+const canvasPixelWidth = computed(() => Math.round(viewLayout.value.grid.cols * cellW.value * zoom.value))
 
 /* ---------- 加減分模式 ---------- */
 const pointsMode = computed({
@@ -229,14 +239,13 @@ function resetPoints() {
     store.resetPoints(cls.value.id)
   }
 }
-/** 字級隨座位尺寸縮放（以預設 80×46 為基準） */
-const sizeScale = computed(() => Math.min(cellW.value / 80, cellH.value / 46))
-/** 座位姓名字級：名字越長字越小，避免超出座位格 */
+/** 座位姓名字級：以自訂字級為基準，名字越長自動縮小避免爆框 */
 function nameFontSize(name) {
   const len = (name || '').length
-  const base = len >= 5 ? 12 : len === 4 ? 14 : 16.5
-  return Math.max(8, base * sizeScale.value)
+  const factor = len >= 5 ? 0.72 : len === 4 ? 0.85 : 1
+  return Math.max(8, Math.round(nameFont.value * factor * 10) / 10)
 }
+const seatNoFont = computed(() => Math.max(7, Math.round(nameFont.value * 0.58 * 10) / 10))
 
 /* ---------- 匯出 ---------- */
 const boardEl = ref(null)
@@ -323,8 +332,13 @@ const today = new Date().toLocaleDateString('zh-TW')
         <input type="range" min="32" max="100" step="2" v-model.number="cellH" />
         <span class="val">{{ cellH }}</span>
       </label>
-      <button class="mini" @click="resetCellSize">恢復預設（80×46）</button>
-      <span class="dim" style="font-size: 12.5px">拉滑桿即時預覽，設定會跟著這張座位表儲存，列印也用同樣比例。</span>
+      <label>
+        字體
+        <input type="range" min="10" max="36" step="1" v-model.number="nameFont" />
+        <span class="val">{{ nameFont }}</span>
+      </label>
+      <button class="mini" @click="resetCellSize">恢復預設</button>
+      <span class="dim" style="font-size: 12.5px">即時預覽；座位間距固定不變。設定跟著這張座位表儲存，列印同步套用。</span>
     </div>
 
     <p v-if="pointsMode" class="pts-hint no-print">
@@ -345,7 +359,7 @@ const today = new Date().toLocaleDateString('zh-TW')
           </div>
           <div class="front-label">{{ viewMode === 'teacher' ? '▼ 前方（黑板）在下' : '▲ 前方（黑板）在上' }}</div>
           <div class="canvas-scroll">
-            <div class="canvas-zoom" :style="{ width: zoom * 100 + '%' }">
+            <div class="canvas-zoom" :style="{ width: canvasPixelWidth + 'px' }">
               <SeatCanvas
                 :layout="viewLayout"
                 :selected="selection?.fromSeatId ? [selection.fromSeatId] : []"
@@ -357,11 +371,11 @@ const today = new Date().toLocaleDateString('zh-TW')
                 @clear-select="onClearSelect"
               >
                 <template #seat-label="{ seat, cx, cy, w, h }">
-                  <text :x="cx" :y="cy - 7 * (h / 46)" text-anchor="middle" :font-size="Math.max(7, 9.5 * sizeScale)" fill="#64748b">
+                  <text :x="cx" :y="cy - nameFont * 0.45" text-anchor="middle" :font-size="seatNoFont" fill="#64748b">
                     {{ studentAtSeat.get(seat.id)?.seatNo ?? '' }}
                   </text>
                   <text
-                    :x="cx" :y="cy + 11 * (h / 46)" text-anchor="middle"
+                    :x="cx" :y="cy + nameFont * 0.65" text-anchor="middle"
                     :font-size="nameFontSize(studentAtSeat.get(seat.id)?.name)"
                     font-weight="600" fill="#1f2937"
                   >
@@ -541,7 +555,7 @@ const today = new Date().toLocaleDateString('zh-TW')
 .size-panel .mini { font-size: 12px; padding: 3px 10px; }
 .zoom-label { font-size: 12.5px; min-width: 40px; text-align: center; }
 .canvas-scroll { overflow-x: auto; }
-.canvas-zoom { min-width: 100%; }
+.canvas-zoom { margin: 0 auto; }
 .pts-hint { background: #fefce8; color: #854d0e; border-radius: 8px; padding: 8px 14px; margin: 0 0 12px; font-size: 13.5px; }
 .batch button.pts-on { background: #fbbf24; border-color: #f59e0b; color: #78350f; font-weight: 600; }
 .pt-btn { min-width: 48px; font-weight: 700; }

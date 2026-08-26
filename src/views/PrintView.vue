@@ -24,6 +24,7 @@ const pages = computed(() => {
       for (const a of p.assignments) atSeat.set(a.seatId, stuById.get(a.studentId))
       const cellW = p.cellW ?? 80
       const cellH = p.cellH ?? 46
+      const nameFont = p.nameFont ?? 17
       return {
         plan: p,
         cls,
@@ -31,15 +32,16 @@ const pages = computed(() => {
         atSeat,
         cellW,
         cellH,
-        scale: Math.min(cellW / 80, cellH / 46),
+        nameFont,
+        seatNoFont: Math.max(7, nameFont * 0.58),
       }
     })
 })
 
-function nameFontSize(name, scale = 1) {
+function nameFontSize(name, base) {
   const len = (name || '').length
-  const base = len >= 5 ? 12 : len === 4 ? 14 : 16.5
-  return Math.max(8, base * scale)
+  const factor = len >= 5 ? 0.72 : len === 4 ? 0.85 : 1
+  return Math.max(8, base * factor)
 }
 
 const today = new Date().toLocaleDateString('zh-TW')
@@ -79,13 +81,13 @@ onMounted(() => {
         <div class="front-label">{{ viewMode === 'teacher' ? '▼ 前方（黑板）在下' : '▲ 前方（黑板）在上' }}</div>
       </div>
       <SeatCanvas :layout="page.layout" :interactive="false" :cell-w="page.cellW" :cell-h="page.cellH" :show-grid="false">
-        <template #seat-label="{ seat, cx, cy, h }">
-          <text :x="cx" :y="cy - 7 * (h / 46)" text-anchor="middle" :font-size="Math.max(7, 9.5 * page.scale)" fill="#64748b">
+        <template #seat-label="{ seat, cx, cy }">
+          <text :x="cx" :y="cy - page.nameFont * 0.45" text-anchor="middle" :font-size="page.seatNoFont" fill="#64748b">
             {{ page.atSeat.get(seat.id)?.seatNo ?? '' }}
           </text>
           <text
-            :x="cx" :y="cy + 11 * (h / 46)" text-anchor="middle"
-            :font-size="nameFontSize(page.atSeat.get(seat.id)?.name, page.scale)"
+            :x="cx" :y="cy + page.nameFont * 0.65" text-anchor="middle"
+            :font-size="nameFontSize(page.atSeat.get(seat.id)?.name, page.nameFont)"
             font-weight="600" fill="#1f2937"
           >
             {{ page.atSeat.get(seat.id)?.name ?? '' }}
